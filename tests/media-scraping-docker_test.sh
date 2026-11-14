@@ -161,7 +161,7 @@ _toggle hub jellyfin metatube
 check "A1 daemon 未运行 → 调 systemctl start" 'grep -q "^systemctl start docker.service" "$MOCK_LOG"'
 check "A2 先 start 后 up" '[ "$(grep -n "systemctl start docker.service" "$MOCK_LOG" | cut -d: -f1)" -lt "$(grep -n "^launch up hub" "$MOCK_LOG" | cut -d: -f1)" ]'
 check "A3 up 目标正确" 'grep -q "^launch up hub$" "$MOCK_LOG"'
-check "A4 自启发通知" 'grep -q "^notify -u normal" "$MOCK_LOG"'
+check "A4 成功拉起不打扰 (不发通知)" '! grep -q "^notify " "$MOCK_LOG"'
 
 # ---------------- B: daemon 已运行 → 不 start ----------------
 reset_state

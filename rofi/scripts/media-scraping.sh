@@ -27,7 +27,7 @@ _docker_start() {
     _docker_service_active && return 0
     local err
     if err=$(systemctl start docker.service 2>&1); then
-        system-notify normal "Docker" "docker.service 未运行, 已启动"
+        # 成功静默: 只在失败时打扰 (与 _docker_stop_if_idle 一致)
         return 0
     fi
     system-notify critical "Docker" "启动 docker.service 失败: ${err:-未知错误}"
