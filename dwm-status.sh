@@ -30,6 +30,9 @@ panes() {
     # network throughput (tx / rx)
     panes+="${ST_NET_BYTE}^c$white^$(print_speed)"
 
+    # VPS traffic quota, daemon-cached (no network in panes)
+    panes+="${ST_VPSBANDWIDTH_BYTE}$(print_vps_bandwidth)"
+
     # current conditions, only when a reading is cached
     local weather_str=$(print_weather)
     [ -n "$weather_str" ] && panes+="${ST_WEATHER_BYTE}^c$blue^$weather_str"
@@ -69,6 +72,8 @@ launch_daemon() {
     interval_update_daemon -i 300 update_mail &
     pids+=($!)
     interval_update_daemon -i 300 update_rss &
+    pids+=($!)
+    interval_update_daemon -i "$(vpsbandwidth_interval)" update_vps_bandwidth &
     pids+=($!)
     update_mpd_daemon &
     pids+=($!)

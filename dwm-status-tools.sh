@@ -3,6 +3,7 @@
 WORK_DIR=$(dirname "${BASH_SOURCE[0]}")
 source "$WORK_DIR/utils/weather.sh"
 source "$WORK_DIR/utils/notify.sh"
+source "$WORK_DIR/utils/vpsbandwidth.sh"
 
 # colorscheme
 black=#1e222a

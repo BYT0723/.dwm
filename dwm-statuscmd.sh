@@ -25,6 +25,7 @@ _ftopen() {
 }
 
 source "$WORK_DIR/utils/notify.sh"
+source "$WORK_DIR/utils/vpsbandwidth.sh"
 source "$WORK_DIR/status-ids.sh" # ST_* block ids, derived from status-ids.def
 
 # --- Command functions (only for actions that need flow control / return) ---
@@ -133,6 +134,25 @@ _docker_monitor() {
     system-notify normal "Tool Not Found" "please install lazydocker"
 }
 
+_vpsbandwidth_notify() {
+    if [[ ! -f $vpsbandwidth_cache ]]; then
+        system-notify normal "VPS Bandwidth" "no data yet (status daemon starting?)"
+        return
+    fi
+
+    local used limit percent ts stale free when msg
+    IFS='|' read -r used limit percent ts stale <"$vpsbandwidth_cache"
+    free=$(awk -v l="$limit" -v u="$used" 'BEGIN { printf "%.1f", l - u }')
+    when=$(date -d "@${ts:-0}" '+%F %R' 2>/dev/null) || when="?"
+
+    msg=$(printf 'Used:    %s / %s GB (%s%%)\nFree:    %s GB\nUpdated: %s' \
+        "$used" "$limit" "$percent" "$free" "$when")
+    [[ $stale == 1 ]] && msg+=$'\n! last refresh failed'
+
+    notify-send -c status -i network-server -h string:x-dunst-stack-tag:vpsbandwidth \
+        "VPS Bandwidth" "$msg"
+}
+
 # --- Dispatch table ---
 # key = [cmdIndex,clickType]; cmdIndex is $ST_* from status-ids.def, the same
 # id dwm reports as $INDEX. Never hardcode the number here.
@@ -176,6 +196,8 @@ declare -A actions=(
     [$ST_SCREENCAST,$right]='"$TOOLS_DIR/screencast.sh" stop'
     [$ST_DOCKER,$left]=_docker_list
     [$ST_DOCKER,$right]=_docker_monitor
+    [$ST_VPSBANDWIDTH,$left]=vpsbandwidth_open_page
+    [$ST_VPSBANDWIDTH,$right]=_vpsbandwidth_notify
 )
 
 # --- Main dispatch ---

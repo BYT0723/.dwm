@@ -49,6 +49,7 @@ black=BLACK blue=BLUE white=WHITE cyan=CYAN
 set_all() {
     print_weather() { printf 'W'; }
     print_speed() { printf 'S'; }
+    print_vps_bandwidth() { printf 'Q'; }
     print_cpu() { printf 'C'; }
     print_mem() { printf 'M'; }
     print_disk() { printf 'D'; }
@@ -73,6 +74,7 @@ expect=(
     "${ST_CPU_BYTE}C" "${ST_MEM_BYTE}M" "${ST_DISK_BYTE}D"
     "${ST_RSS_BYTE}R" "${ST_MAIL_BYTE}L" "${ST_NOTIFY_BYTE}N"
     "${ST_NET_BYTE}^cWHITE^S"
+    "${ST_VPSBANDWIDTH_BYTE}Q"
     "${ST_WEATHER_BYTE}^cBLUE^W"
     "${ST_DOCKER_BYTE}K"
     "${ST_SCREENCAST_BYTE}T" "${ST_PROXY_BYTE}X"
@@ -100,6 +102,7 @@ expect=(
     "${ST_CPU_BYTE}C" "${ST_MEM_BYTE}M" "${ST_DISK_BYTE}D"
     "${ST_RSS_BYTE}" "${ST_MAIL_BYTE}" "${ST_NOTIFY_BYTE}"
     "${ST_NET_BYTE}^cWHITE^S"
+    "${ST_VPSBANDWIDTH_BYTE}Q"
     "${ST_DOCKER_BYTE}"
     "${ST_SCREENCAST_BYTE}" "${ST_PROXY_BYTE}X"
     "${ST_MPD_BYTE}P" "${ST_VOLUME_BYTE}V"

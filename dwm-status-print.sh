@@ -16,6 +16,7 @@ icons["volume_mute"]=""
 icons["traffic_rx"]=""
 icons["traffic_tx"]=""
 icons["screencast"]=""
+icons["vpsbandwidth"]="󰈀"
 
 STACKED_SPLIT="^s^"
 
@@ -304,6 +305,29 @@ print_docker() {
 print_notification() {
     unread=$(dunstctl count history)
     ((unread > 0)) && printf "^c$yellow^${icons[notification]}"
+}
+
+# VPS 流量额度: 只读 daemon 写好的缓存, 绝不联网
+print_vps_bandwidth() {
+    [ -f "$vpsbandwidth_cache" ] || return
+
+    local used limit percent ts stale fg pct used_g limit_g
+    IFS='|' read -r used limit percent ts stale <"$vpsbandwidth_cache" 2>/dev/null
+    [[ -n $used && -n $limit && -n $percent ]] || return
+
+    # 10# 防 "08" 被算术当八进制
+    used_g=$((10#${used%.*}))
+    limit_g=$((10#${limit%.*}))
+    pct=$((10#${percent%.*}))
+    fg="$white"
+    if ((pct >= 90)); then
+        fg="$red"
+    elif ((pct >= 80)); then
+        fg="$yellow"
+    fi
+
+    printf "^c$fg^%s %d/%dG %d%%" "${icons[vpsbandwidth]}" "$used_g" "$limit_g" "$pct"
+    [[ $stale == 1 ]] && printf "!"
 }
 
 print_screencast() {

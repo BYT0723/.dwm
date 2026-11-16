@@ -20,7 +20,8 @@ dwm-launcher.sh ──sources──► utils/monitor.sh
 dwm-status.sh ──sources──► dwm-status-tools.sh ──sources──► dwm-status-print.sh
                                                            utils/weather.sh
                                                            utils/notify.sh
-dwm-statuscmd.sh ──sources──► utils/notify.sh
+                                                           utils/vpsbandwidth.sh
+dwm-statuscmd.sh ──sources──► utils/notify.sh, utils/vpsbandwidth.sh
 autostart.sh ──sources──► utils/launch.sh
 tools/theme.sh ──sources──► utils/notify.sh, utils/launch.sh, tools/monitor-brightness.sh
                 ──requires─► xsettingsd, dconf (gsettings), curl (GTK/portal 双通道广播 / auto 日出日落)
@@ -81,6 +82,20 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | 函数        | 调用者                                                          |
 | ----------- | --------------------------------------------------------------- |
 | `print_battery()` | dwm-status.sh panes() (status2d 自绘电池: 端子/外框/内背景/电量四段 `^r^` 矩形, `^d^` 复位色 + `^fN^` 前移光标留间距) |
+| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出 `󰈀 193/500G 39%`; ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
+
+### utils/vpsbandwidth.sh (core + 厂商 provider)
+
+| 函数 | 调用者 |
+| ---- | ------ |
+| `update_vps_bandwidth()` | dwm-status.sh launch_daemon (`interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth`) — core: 读 `provider` → 调度 `vpsbandwidth_fetch_<provider>` → 校验 `used\|limit\|percent` → 原子写缓存; 失败保留旧值 + `stale=1`, **恒返回 0** (避免 interval daemon 每轮弹 critical) |
+| `vpsbandwidth_fetch_dedione()` | update_vps_bandwidth (provider; 两步: 产品页下发会话 cookie + 新鲜 `vtoken` → 带两者请求 `api=json&act=bandwidth`; 凭证取 `dedione.auth_token` 或 Firefox `cookies.sqlite`) |
+| `vpsbandwidth_interval()` | dwm-status.sh (读 `.interval`, 缺失/非数字/<60 → 1800) |
+| `vpsbandwidth_config_get()` | 内部 (jq 读 `vpsbandwidth.json`, 缺文件/坏 JSON 输出空) |
+| `_vpsbw_fail()` | update_vps_bandwidth (旧值置 `stale=1`; stamp `~/.local/state/dwm/status/vpsbandwidth-alert` 去重, 只在首次失败 `system-notify normal`) |
+| `_vpsbw_ff_profile_dir()` / `_vpsbw_ff_token()` | vpsbandwidth_fetch_dedione (解析 `profiles.ini` 的 `Default`/`Path`, 回退 `*.default-release`; `sqlite3 "file:…?immutable=1"` 只读不锁库) |
+| `vpsbandwidth_page_dedione()` | vpsbandwidth_open_page (xdg-open 产品详情页) |
+| `vpsbandwidth_open_page()` | dwm-statuscmd.sh `[$ST_VPSBANDWIDTH,$left]` (按当前 provider 找 `vpsbandwidth_page_<provider>`, 缺失静默) |
 
 ### utils/notify.sh → system-notify()
 
@@ -597,6 +612,10 @@ dwm-status.sh
     (顺序/分组/圆角归 dwm config.h 的 bar_left/bar_right; 空 block 只留
      id 字节, 由 dwm 的 bar_blocks 丢弃)
   → launch_daemon(update_*_daemon)
+    └─ interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth
+       → provider (默认 dedione): token = config.auth_token || Firefox cookies.sqlite
+       → GET 产品页 (拿会话 cookie + 新鲜 vtoken) → GET api=json&act=bandwidth
+       → 校验 > 原子写 /tmp/dwm-status/vps-bandwidth (失败保留旧值 + stale=1)
   → xsetroot -name "$status"
 
 dwm-statuscmd.sh (状态栏点击)
@@ -693,6 +712,7 @@ wallpaper.sh → source utils/monitor.sh, utils/notify.sh
 - `~/.config/dwm/quicklinks.json` — quicklinks 书签, `links` 数组元素含 `id`(uuid)、`name`、`url` (icon 字段已废弃移除); 顶层 `searcher` 数组存搜索引擎 `{name, url}`(name 为唯一键, url 用 `{key}` 占位搜索词, 可省略 → 追加 url 末尾), 自定义输入搜索默认用 `searcher[0]`, 支持 `@<name>` 首 token 指定引擎
 - `~/.config/dwm/wallpaper.json` — 壁纸配置, 含 `monitors`(按屏/组名键)、`groups`(成员名单 + enabled 启停) + 可选顶层/`.defaults.random_depth` (全局搜索深度, 缺省 3, `find -maxdepth`); 每个 monitor/组可带可选 `video-render` 对象 `{volume, fps}`: `volume>0` 传 `--volume N` 播放音频, `volume=0`/缺省时传 `--mute` 静音 (0 与 mute 等价), `fps>0` 传 `--fps`; 随机类型 `random_type` ∈ image/video/web (rofi Type 三选一); web 随机池 `random_web_dir`/`random_web_dir_dark` (缺省 `~/.local/share/Steam/steamapps/workshop/content/431960`，池为其下所有 `index.html` 的上层目录); 主题色调目录: light 用 `random_image_dir`/`random_video_dir`, dark 用 `random_image_dir_dark`/`random_video_dir_dark` (缺失/空串 fallback light, rofi Wallpaper 菜单 Images Dark/Videos Dark 配置); 目录路径可写 `~`/`$HOME` 可移植形式 (读侧 `expand_path` 展开, rofi 选择存盘经 `shrink_path` 自动压缩 `$HOME` 为 `~`)
 - `~/.local/state/dwm/wallpaper-last.json` — 壁纸主题记忆 (状态, 非配置): `{"<target>":{"light":"/path","dark":"/path"}}`, target = monitor 名/组名/Screen; 主题切换优先恢复记忆 (文件不存在回退 random), 手动 `next/select` 与 daemon 轮换按 `current-theme` 回写
+- `~/.config/dwm/vpsbandwidth.json` — 状态栏 VPS 流量额度配置 (0600, 不入库): `provider`(缺省 `dedione`, 对应 `vpsbandwidth_fetch_<provider>`)、`interval`(刷新秒数, 缺省 1800)、各厂商私有对象 (如 `dedione.{product_id,svs,auth_token}`); `auth_token` 为空时自动读 Firefox `cookies.sqlite` 的 `WHMCSlogin_auth_tk`, 令牌过期只需浏览器重新登录一次
 - `~/.config/dwm/theme.json` — `tools/theme.sh` 的外部化主题配置，`"auto"` 含 `enabled`(默认 false)、`sun_rise_offset`(日出延迟分钟数)、`sun_set_offset`(日落延迟分钟数)、`dawn_minutes`/`dusk_minutes`(亮度过渡分钟数，默认 60，0=关闭渐变)、`transition_anchor`(过渡锚点 `after`(默认，事件后窗口) / `center`(对称窗口) / `before`(事件前窗口))，`"cursor"` 含 `theme`/`size`，`"dpi"` 为 Xft.dpi 值，`light`/`dark` 各自含 `colorscheme`(引用 `~/.config/dwm/colorschemes/` 下的颜色方案文件) 与可选 `brightness.<monitor>`(该模式的端点亮度，键为 xrandr 输出名，缺失/非数字/>100 fallback 50)，`qt` 为 Kvantum 主题名 (light `Orchis-solid` / dark `Orchis-solidDark`)
 - `~/.xsettingsd` — `set_gtk_theme()` 维护 `Net/ThemeName`(当前 GTK 主题) + `Gtk/CursorThemeName/Size`(源 `theme.json:cursor`, 与 `Xcursor` 对齐, 缺失时 Firefox 回退到 `settings.ini/gsettings` 的 36), 保留其他 XSETTINGS 键, `pkill -HUP xsettingsd` 触发重载广播
 
@@ -733,6 +753,13 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **音频服务卡死会拖停整条状态栏, 已加超时兜底**: `print_volume` 调 `amixer get Master`, 本机 ALSA default 是 pipewire-pulse 插件 (`amixer info` → `Card default 'pulse'`)。USB DAC (Fosi DS2) 卡在控制传输 (`dmesg` 的 `err -110`, wireplumber 停在 `usb_start_wait_urb` D 态) 时 pipewire-pulse 不响应, 单次 amixer 要阻塞 ~30s; 而 `launch_refresh` 是串行 `panes(); sleep 1`, 一个慢 block 让状态栏每 ~31s 才刷新一次 (表现为“数据没有更新”, 期间各 daemon 仍在正常写缓存)。现给 amixer 加 `timeout 1` + 空值 guard (无 Master 时不再对空串做 `-eq`)。回归测试 `tests/status-volume-hang_test.sh` (场景 C/D 旧代码 FAIL)
 - **status writer 不再注入 pill 底色 (`^b`)**: `panes()` 原用 `new_pane()` 给每个 pane 组首 block 加 `^b$black^`, 理由是"让 pane 颜色跟随 xrdb 主题"。但 dwm 的 `SchemeStatus` bg = `col_black`, `loadxrdb()` 已用 `strncpy` **原地覆盖**为 xrdb 的 `dwm.col_black` (dwm.c), 且 SIGHUP restart 时 `autostart.sh` 会跑 `dwm-status.sh reboot` 让 writer 重读同一份 xrdb —— 两边同源同值, `^b` 纯属重复写入。现 `new_pane` 已删除, `panes()` 直接拼接 `${ST_*_BYTE}<text>` 且每块独占一行、按语义分组注释 (系统负载/未读/网络/天气/容器/录屏/代理/音频/电源时钟), 行序与 dwm 绘制顺序无关, 纯为阅读; 空 block 只留 id 字节, 由 dwm 的 `bar_blocks` 丢弃 (无可见文本)。绘制顺序/分组/圆角全由 dwm `config.h` 决定, 注册了但 config 未列的块 (如当前 volume) 直接不绘制。**注意** writer 侧若给空 block 加颜色码 (如 `^c...^`) 会使其"有可见文本"而不被丢弃, 故 `weather` 仍保留 `[ -n ]` 判断。回归测试 `tests/status-panes_test.sh`
 - `tools/calendar.sh:3` source 路径已修复为 `$(dirname "$0")/../utils/notify.sh`
+
+### VPS 流量额度（VPSBandwidth）
+
+- **WHMCS 面板不能直接复用页面 URL 里的 `vtoken`**: 实测 ① 只带 URL (含 vtoken) + 无 cookie → `302 /login`；② 只带 remember-me 令牌 `WHMCSlogin_auth_tk` → 产品页 200，并 `Set-Cookie` 一个 `WHMCSjQR...` 会话 cookie，页面内含**本次会话专属**的新 vtoken；③ 新 vtoken + 该会话 cookie → `api=json&act=bandwidth` 200；缺会话 cookie 直接返回 `The csrf tokens do not match!!`。故 provider 固定两步: 先 GET 产品页拿 cookie+vtoken，再 GET API，不能省。
+- **凭证零维护**: Firefox 把 `WHMCSlogin_auth_tk` 明文存在 `cookies.sqlite`，有效期约一年（实测到 2027-10）。`_vpsbw_ff_token` 用 `sqlite3 "file:<db>?immutable=1"` 只读（不锁库），profile 按 `profiles.ini` 的 `Default` 解析并回退 `*.default-release`；配置文件 `auth_token` 非空时优先，便于换浏览器/排查。令牌过期只需浏览器重新登录，代码与配置不用改。
+- **失败不能向上抛**: `interval_update_daemon` 对非 0 返回会每轮弹 critical（30 分钟一次刷屏），故 core 恒返回 0，失败只把缓存标记 `stale=1` 并保留旧值；告警用 stamp 文件（`~/.local/state/dwm/status/vpsbandwidth-alert`）去重，成功一次自动清除，展示层行尾加 `!`。
+- **core / provider 分离**: `update_vps_bandwidth` 只做配置→调度→校验→缓存，不得出现 whmcs/vtoken/cookie/curl（`tests/status-vpsbandwidth_test.sh` 静态守卫）；新增厂商 = 加 `vpsbandwidth_fetch_<name>` + 配置段 + 改 `provider`，展示/点击/dwm 侧零改动。provider 契约: stdout 一行 `used_gb|limit_gb|percent`，失败非 0 且 stdout 为空，诊断走 stderr。
 
 ### MPD / MPRIS
 
