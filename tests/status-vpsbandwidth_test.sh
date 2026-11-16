@@ -207,8 +207,10 @@ white=W red=R yellow=Y blue=B cyan=C black=K
 
 seed_cache '193.27|500|38.65|1700000000|0'
 out=$(print_vps_bandwidth)
-[[ $out == *'193/500G 38%'* ]] && ok "compact form 193/500G 38%" || no "compact form ($out)"
-[[ $out == *"${icons[vpsbandwidth]}"* ]] && ok "icon rendered" || no "icon rendered"
+[[ $out == *'usage:193G'* && $out == *'^s^'* && $out == *'limit:500G'* ]] \
+    && ok "two-row usage/limit" || no "two-row usage/limit ($out)"
+[[ $out == *'^r0,4,10,24^'* ]] && ok "gauge frame 10x24" || no "gauge frame ($out)"
+[[ $out == *'^r2,19,6,7^'* ]] && ok "38% fill = 7px" || no "38% fill ($out)"
 
 seed_cache '400|500|85.2|1700000000|0'
 out=$(print_vps_bandwidth)
@@ -220,7 +222,17 @@ out=$(print_vps_bandwidth)
 
 seed_cache '193|500|38|1700000000|1'
 out=$(print_vps_bandwidth)
-[[ $out == *'193/500G 38%!' ]] && ok "stale marker" || no "stale marker ($out)"
+[[ $out == *'limit:500G!'* ]] && ok "stale marker" || no "stale marker ($out)"
+
+seed_cache '1000|500|200|1700000000|0'
+out=$(print_vps_bandwidth)
+[[ $out == *'^r2,6,6,20^'* ]] && ok "over quota fill clamped to inner height" || no "over quota clamp ($out)"
+
+seed_cache '10|0|0|1700000000|0'
+err=$(print_vps_bandwidth 2>&1 >/dev/null)
+[[ -z $err ]] && ok "zero limit: no stderr" || no "zero limit stderr ($err)"
+out=$(print_vps_bandwidth)
+[[ $out == *'limit:0G'* ]] && ok "zero limit still renders text" || no "zero limit text ($out)"
 
 rm -f "$VPSBANDWIDTH_CACHE"
 out=$(print_vps_bandwidth)

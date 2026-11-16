@@ -16,7 +16,6 @@ icons["volume_mute"]=""
 icons["traffic_rx"]=""
 icons["traffic_tx"]=""
 icons["screencast"]=""
-icons["vpsbandwidth"]="󰈀"
 
 STACKED_SPLIT="^s^"
 
@@ -47,7 +46,7 @@ print_battery() {
         fg="$green"
     fi
 
-    local x=8 y=11 w=18 h=10 border=1 padding=1
+    local x=8 y=11 w=18 h=10 f=32 border=1 padding=1
     # 端子宽高
     local rw=2 rh=$((h * 60 / 100))
     # 电池内部宽度
@@ -89,7 +88,7 @@ print_battery() {
         "$fill_w" \
         "$((h - 2 * border - 2 * padding))"
 
-    printf '^d^^f%d^' "$((w + 2 * x))"
+    printf '^d^^f%d^' "$f"
 }
 
 print_volume() {
@@ -311,23 +310,52 @@ print_notification() {
 print_vps_bandwidth() {
     [ -f "$vpsbandwidth_cache" ] || return
 
-    local used limit percent ts stale fg pct used_g limit_g
-    IFS='|' read -r used limit percent ts stale <"$vpsbandwidth_cache" 2>/dev/null
+    local used limit percent _ts stale
+    IFS='|' read -r used limit percent _ts stale <"$vpsbandwidth_cache" 2>/dev/null
     [[ -n $used && -n $limit && -n $percent ]] || return
 
-    # 10# 防 "08" 被算术当八进制
-    used_g=$((10#${used%.*}))
-    limit_g=$((10#${limit%.*}))
-    pct=$((10#${percent%.*}))
-    fg="$white"
+    # 10# 防 "08" 被算术当八进制; pct 封顶, 超额时不把矩形画出框外
+    local used_g=$((10#${used%.*})) limit_g=$((10#${limit%.*})) pct=$((10#${percent%.*}))
+    ((pct > 100)) && pct=100
+
+    local fg="$white"
     if ((pct >= 90)); then
         fg="$red"
     elif ((pct >= 80)); then
         fg="$yellow"
     fi
 
-    printf "^c$fg^%s %d/%dG %d%%" "${icons[vpsbandwidth]}" "$used_g" "$limit_g" "$pct"
+    printf "^c$fg^usage:%dG${STACKED_SPLIT}limit:%dG" "$used_g" "$limit_g"
     [[ $stale == 1 ]] && printf "!"
+
+    local x=0 y=4 w=10 h=24 f=20 border=1 padding=1
+    # 填充只占边框内、padding 内的高度; 用缓存里的 percent, 不再除以 limit
+    local inner_h=$((h - 2 * border - 2 * padding))
+    local fill_h=$((inner_h * pct / 100))
+
+    # 绘制外框
+    printf "^r%d,%d,%d,%d^" "$x" "$y" "$w" "$h"
+
+    # inside black
+    printf '^c%s^' "$black"
+    printf '^r%d,%d,%d,%d^' \
+        "$((x + border))" \
+        "$((y + border))" \
+        "$((w - 2 * border))" \
+        "$((h - 2 * border))"
+
+    # 使用量 (从底部向上)
+    if ((fill_h > 0)); then
+        printf '^c%s^' "$fg"
+        printf '^r%d,%d,%d,%d^' \
+            "$((x + border + padding))" \
+            "$((y + h - border - padding - fill_h))" \
+            "$((w - 2 * border - 2 * padding))" \
+            "$fill_h"
+    fi
+
+    # 预留宽度
+    printf '^d^^f%d^' "$f"
 }
 
 print_screencast() {

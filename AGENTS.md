@@ -82,7 +82,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | 函数        | 调用者                                                          |
 | ----------- | --------------------------------------------------------------- |
 | `print_battery()` | dwm-status.sh panes() (status2d 自绘电池: 端子/外框/内背景/电量四段 `^r^` 矩形, `^d^` 复位色 + `^fN^` 前移光标留间距) |
-| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出 `󰈀 193/500G 39%`; ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
+| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (按 `percent` 填充, >100% 封顶, 只占边框内 padding 区); ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
 
 ### utils/vpsbandwidth.sh (core + 厂商 provider)
 
