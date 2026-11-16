@@ -32,7 +32,7 @@ print_date() {
 
 # 通用进度条: 外框(+可选端子) / 内底 / 按比例填充, 末尾 ^d^ 复位色 + ^fN^ 前移留白
 # bar_gauge <x> <y> <w> <h> <pct> <fg> <h|v> <advance> [nub_w]
-#   h: 横向, 从右向左填充 (电池); v: 纵向, 从下向上填充 (VPS 额度)
+#   h: 横向, 从右向左填充 (电池); v: 纵向, 从下向上填充 (VPS 余量)
 #   nub_w 为端子宽度 (电池正极), 缺省无端子
 bar_gauge() {
     local x=$1 y=$2 w=$3 h=$4 pct=$5 fg=$6 axis=$7 adv=$8 nub=${9:-0}
@@ -59,7 +59,7 @@ bar_gauge() {
     printf '^r%d,%d,%d,%d^' "$((x + border))" "$((y + border))" \
         "$((w - 2 * border))" "$((h - 2 * border))"
 
-    # 填充只占边框内、padding 内的区域; 非零比例至少留 1px (低电量/低用量仍可见)
+    # 填充只占边框内、padding 内的区域; 非零比例至少留 1px (低电量/低余量仍可见)
     local inner_w=$((w - 2 * border - 2 * padding))
     local inner_h=$((h - 2 * border - 2 * padding))
     if ((pct > 0)); then
@@ -336,8 +336,8 @@ print_vps_bandwidth() {
     printf "^c$fg^usage:%dG${STACKED_SPLIT}limit:%dG" "$used_g" "$limit_g"
     [[ $stale == 1 ]] && printf "!"
 
-    # 右侧 10x24 竖条 (纵向填充), 超额由 bar_gauge 封顶
-    bar_gauge 0 4 10 24 "$pct" "$fg" v 20
+    # 右侧 10x24 竖条: 余量 (100 - 已用%), 从下向上填充; 耗尽/超额时 bar_gauge 钳制为空
+    bar_gauge 0 4 10 24 "$((100 - pct))" "$fg" v 20
 }
 
 print_screencast() {

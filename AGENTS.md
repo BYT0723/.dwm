@@ -83,7 +83,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | ----------- | --------------------------------------------------------------- |
 | `bar_gauge()` | print_battery, print_vps_bandwidth — 状态栏通用进度条: 外框(+可选端子) + 黑色内底 + 按比例填充, 外框/填充统一按传入 `fg` 上色, 末尾 `^d^` 复位色 + `^fN^` 前移留白; 参数 `<x> <y> <w> <h> <pct> <fg> <h\|v> <advance> [nub_w]` (h 从右往左 / v 从下往上; pct 钳制 0~100, 非零比例至少 1px, 0% 不填充) |
 | `print_battery()` | dwm-status.sh panes() — acpi 读状态/电量 → 配色 (放电 <20% 红, 充电绿) → `bar_gauge 8 11 18 10 ... h 32 2` (端子宽 2) |
-| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (`bar_gauge 0 4 10 24 ... v 20`, 超额由 bar_gauge 封顶); ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
+| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (余量 `100-percent`, `bar_gauge 0 4 10 24 ... v 20`, 耗尽/超额钳制为空); 配色仍按已用: ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
 
 ### utils/vpsbandwidth.sh (core + 厂商 provider)
 

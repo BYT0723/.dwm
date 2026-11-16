@@ -3,7 +3,7 @@
 #   A. core/provider 解耦: 假 provider 即可写缓存; 未知 provider 保留旧值并置 stale
 #   B. provider 契约校验: 非数字 / 字段数不对 / 多行 / 空 → 视同失败
 #   C. dedione provider: 两步抓取 (页面 vtoken + 会话 cookie → API)、token 优先级
-#   D. 展示: 193/500G 39% + 阈值配色 + stale "!" + 无缓存不输出
+#   D. 展示: 193/500G 39% + 阈值配色 + stale "!" + 无缓存不输出 (竖条为余量 100-已用%)
 #   E. 静态守卫: core 不认识 WHMCS/vtoken/cookie; print 不联网
 #
 # 运行: bash tests/status-vpsbandwidth_test.sh
@@ -210,7 +210,7 @@ out=$(print_vps_bandwidth)
 [[ $out == *'usage:193G'* && $out == *'^s^'* && $out == *'limit:500G'* ]] \
     && ok "two-row usage/limit" || no "two-row usage/limit ($out)"
 [[ $out == *'^r0,4,10,24^'* ]] && ok "gauge frame 10x24" || no "gauge frame ($out)"
-[[ $out == *'^r2,19,6,7^'* ]] && ok "38% fill = 7px" || no "38% fill ($out)"
+[[ $out == *'^r2,14,6,12^'* ]] && ok "38% used -> 62% remain = 12px" || no "38% used -> remain fill ($out)"
 
 seed_cache '400|500|85.2|1700000000|0'
 out=$(print_vps_bandwidth)
@@ -219,6 +219,7 @@ out=$(print_vps_bandwidth)
 seed_cache '480|500|95|1700000000|0'
 out=$(print_vps_bandwidth)
 [[ $out == *"^c$red^"* ]] && ok ">=90% red" || no ">=90% red ($out)"
+[[ $out == *'^r2,25,6,1^'* ]] && ok "95% used -> 5% remain = 1px sliver" || no "95% remain sliver ($out)"
 
 seed_cache '193|500|38|1700000000|1'
 out=$(print_vps_bandwidth)
@@ -226,7 +227,7 @@ out=$(print_vps_bandwidth)
 
 seed_cache '1000|500|200|1700000000|0'
 out=$(print_vps_bandwidth)
-[[ $out == *'^r2,6,6,20^'* ]] && ok "over quota fill clamped to inner height" || no "over quota clamp ($out)"
+[[ $out != *'^r2,'* ]] && ok "over quota -> remain empty, no fill" || no "over quota empty ($out)"
 
 seed_cache '10|0|0|1700000000|0'
 err=$(print_vps_bandwidth 2>&1 >/dev/null)

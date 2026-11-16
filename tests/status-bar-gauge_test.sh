@@ -77,7 +77,7 @@ out=$(print_battery)
 vpsbandwidth_cache="$TMP/vps-bandwidth"
 printf '193.27|500|38.65|1700000000|0\n' >"$vpsbandwidth_cache"
 out=$(print_vps_bandwidth)
-[[ $out == *'usage:193G'*'^r2,19,6,7^'* ]] && ok "vps keeps its gauge" || no "vps gauge ($out)"
+[[ $out == *'usage:193G'*'^r2,14,6,12^'* ]] && ok "vps shows remainder gauge" || no "vps gauge ($out)"
 
 section "E: 静态守卫"
 for fn in print_battery print_vps_bandwidth; do
