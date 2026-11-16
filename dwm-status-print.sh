@@ -30,6 +30,57 @@ print_date() {
     fi
 }
 
+# 通用进度条: 外框(+可选端子) / 内底 / 按比例填充, 末尾 ^d^ 复位色 + ^fN^ 前移留白
+# bar_gauge <x> <y> <w> <h> <pct> <fg> <h|v> <advance> [nub_w]
+#   h: 横向, 从右向左填充 (电池); v: 纵向, 从下向上填充 (VPS 额度)
+#   nub_w 为端子宽度 (电池正极), 缺省无端子
+bar_gauge() {
+    local x=$1 y=$2 w=$3 h=$4 pct=$5 fg=$6 axis=$7 adv=$8 nub=${9:-0}
+    local border=1 padding=1
+
+    # 超额/负值钳制, 不把矩形画出框外
+    ((pct > 100)) && pct=100
+    ((pct < 0)) && pct=0
+
+    # 端子: 右侧, 60% 高, 垂直居中
+    if ((nub > 0)); then
+        local rh=$((h * 60 / 100))
+        printf '^c%s^' "$fg"
+        printf '^r%d,%d,%d,%d^' "$x" "$((y + (h - rh) / 2))" "$nub" "$rh"
+        x=$((x + nub)) w=$((w - nub))
+    fi
+
+    # 外框
+    printf '^c%s^' "$fg"
+    printf '^r%d,%d,%d,%d^' "$x" "$y" "$w" "$h"
+
+    # 内底
+    printf '^c%s^' "$black"
+    printf '^r%d,%d,%d,%d^' "$((x + border))" "$((y + border))" \
+        "$((w - 2 * border))" "$((h - 2 * border))"
+
+    # 填充只占边框内、padding 内的区域; 非零比例至少留 1px (低电量/低用量仍可见)
+    local inner_w=$((w - 2 * border - 2 * padding))
+    local inner_h=$((h - 2 * border - 2 * padding))
+    if ((pct > 0)); then
+        local fill
+        printf '^c%s^' "$fg"
+        if [[ $axis == h ]]; then
+            fill=$((inner_w * pct / 100))
+            ((fill < 1)) && fill=1
+            printf '^r%d,%d,%d,%d^' "$((x + border + padding + inner_w - fill))" \
+                "$((y + border + padding))" "$fill" "$inner_h"
+        else
+            fill=$((inner_h * pct / 100))
+            ((fill < 1)) && fill=1
+            printf '^r%d,%d,%d,%d^' "$((x + border + padding))" \
+                "$((y + h - border - padding - fill))" "$inner_w" "$fill"
+        fi
+    fi
+
+    printf '^d^^f%d^' "$adv"
+}
+
 print_battery() {
     [ -z "$(command -v acpi)" ] && {
         system-notify critical "Tool Not Found" "please install acpi"
@@ -46,49 +97,7 @@ print_battery() {
         fg="$green"
     fi
 
-    local x=8 y=11 w=18 h=10 f=32 border=1 padding=1
-    # 端子宽高
-    local rw=2 rh=$((h * 60 / 100))
-    # 电池内部宽度
-    local inside_w=$((w - rw - 2 * border))
-    # 当前电量宽度 (四舍五入)
-    local remain_w=$((inside_w * ((percent + 50) / 100)))
-
-    # 防止低电量时减去 padding 后出现负宽度
-    local fill_w=$((remain_w - 2 * padding))
-    ((fill_w < 0)) && fill_w=0
-
-    # 端子凸起
-    printf '^r%d,%d,%d,%d^' \
-        "$x" \
-        "$((y + (h - rh) / 2))" \
-        "$rw" \
-        "$rh"
-
-    # 电池主体外框
-    printf '^r%d,%d,%d,%d^' \
-        "$((x + rw))" \
-        "$y" \
-        "$((w - rw))" \
-        "$h"
-
-    # 内部背景
-    printf '^c%s^' "$black"
-    printf '^r%d,%d,%d,%d^' \
-        "$((x + rw + border))" \
-        "$((y + border))" \
-        "$inside_w" \
-        "$((h - 2 * border))"
-
-    # 电量
-    printf '^c%s^' "$fg"
-    printf '^r%d,%d,%d,%d^' \
-        "$((x + rw + border + padding + inside_w - remain_w))" \
-        "$((y + border + padding))" \
-        "$fill_w" \
-        "$((h - 2 * border - 2 * padding))"
-
-    printf '^d^^f%d^' "$f"
+    bar_gauge 8 11 18 10 "$percent" "$fg" h 32 2
 }
 
 print_volume() {
@@ -314,9 +323,8 @@ print_vps_bandwidth() {
     IFS='|' read -r used limit percent _ts stale <"$vpsbandwidth_cache" 2>/dev/null
     [[ -n $used && -n $limit && -n $percent ]] || return
 
-    # 10# 防 "08" 被算术当八进制; pct 封顶, 超额时不把矩形画出框外
+    # 10# 防 "08" 被算术当八进制
     local used_g=$((10#${used%.*})) limit_g=$((10#${limit%.*})) pct=$((10#${percent%.*}))
-    ((pct > 100)) && pct=100
 
     local fg="$white"
     if ((pct >= 90)); then
@@ -328,34 +336,8 @@ print_vps_bandwidth() {
     printf "^c$fg^usage:%dG${STACKED_SPLIT}limit:%dG" "$used_g" "$limit_g"
     [[ $stale == 1 ]] && printf "!"
 
-    local x=0 y=4 w=10 h=24 f=20 border=1 padding=1
-    # 填充只占边框内、padding 内的高度; 用缓存里的 percent, 不再除以 limit
-    local inner_h=$((h - 2 * border - 2 * padding))
-    local fill_h=$((inner_h * pct / 100))
-
-    # 绘制外框
-    printf "^r%d,%d,%d,%d^" "$x" "$y" "$w" "$h"
-
-    # inside black
-    printf '^c%s^' "$black"
-    printf '^r%d,%d,%d,%d^' \
-        "$((x + border))" \
-        "$((y + border))" \
-        "$((w - 2 * border))" \
-        "$((h - 2 * border))"
-
-    # 使用量 (从底部向上)
-    if ((fill_h > 0)); then
-        printf '^c%s^' "$fg"
-        printf '^r%d,%d,%d,%d^' \
-            "$((x + border + padding))" \
-            "$((y + h - border - padding - fill_h))" \
-            "$((w - 2 * border - 2 * padding))" \
-            "$fill_h"
-    fi
-
-    # 预留宽度
-    printf '^d^^f%d^' "$f"
+    # 右侧 10x24 竖条 (纵向填充), 超额由 bar_gauge 封顶
+    bar_gauge 0 4 10 24 "$pct" "$fg" v 20
 }
 
 print_screencast() {

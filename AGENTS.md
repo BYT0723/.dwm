@@ -81,8 +81,9 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 
 | 函数        | 调用者                                                          |
 | ----------- | --------------------------------------------------------------- |
-| `print_battery()` | dwm-status.sh panes() (status2d 自绘电池: 端子/外框/内背景/电量四段 `^r^` 矩形, `^d^` 复位色 + `^fN^` 前移光标留间距) |
-| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (按 `percent` 填充, >100% 封顶, 只占边框内 padding 区); ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
+| `bar_gauge()` | print_battery, print_vps_bandwidth — 状态栏通用进度条: 外框(+可选端子) + 黑色内底 + 按比例填充, 外框/填充统一按传入 `fg` 上色, 末尾 `^d^` 复位色 + `^fN^` 前移留白; 参数 `<x> <y> <w> <h> <pct> <fg> <h\|v> <advance> [nub_w]` (h 从右往左 / v 从下往上; pct 钳制 0~100, 非零比例至少 1px, 0% 不填充) |
+| `print_battery()` | dwm-status.sh panes() — acpi 读状态/电量 → 配色 (放电 <20% 红, 充电绿) → `bar_gauge 8 11 18 10 ... h 32 2` (端子宽 2) |
+| `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (`bar_gauge 0 4 10 24 ... v 20`, 超额由 bar_gauge 封顶); ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
 
 ### utils/vpsbandwidth.sh (core + 厂商 provider)
 
@@ -753,6 +754,7 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **音频服务卡死会拖停整条状态栏, 已加超时兜底**: `print_volume` 调 `amixer get Master`, 本机 ALSA default 是 pipewire-pulse 插件 (`amixer info` → `Card default 'pulse'`)。USB DAC (Fosi DS2) 卡在控制传输 (`dmesg` 的 `err -110`, wireplumber 停在 `usb_start_wait_urb` D 态) 时 pipewire-pulse 不响应, 单次 amixer 要阻塞 ~30s; 而 `launch_refresh` 是串行 `panes(); sleep 1`, 一个慢 block 让状态栏每 ~31s 才刷新一次 (表现为“数据没有更新”, 期间各 daemon 仍在正常写缓存)。现给 amixer 加 `timeout 1` + 空值 guard (无 Master 时不再对空串做 `-eq`)。回归测试 `tests/status-volume-hang_test.sh` (场景 C/D 旧代码 FAIL)
 - **status writer 不再注入 pill 底色 (`^b`)**: `panes()` 原用 `new_pane()` 给每个 pane 组首 block 加 `^b$black^`, 理由是"让 pane 颜色跟随 xrdb 主题"。但 dwm 的 `SchemeStatus` bg = `col_black`, `loadxrdb()` 已用 `strncpy` **原地覆盖**为 xrdb 的 `dwm.col_black` (dwm.c), 且 SIGHUP restart 时 `autostart.sh` 会跑 `dwm-status.sh reboot` 让 writer 重读同一份 xrdb —— 两边同源同值, `^b` 纯属重复写入。现 `new_pane` 已删除, `panes()` 直接拼接 `${ST_*_BYTE}<text>` 且每块独占一行、按语义分组注释 (系统负载/未读/网络/天气/容器/录屏/代理/音频/电源时钟), 行序与 dwm 绘制顺序无关, 纯为阅读; 空 block 只留 id 字节, 由 dwm 的 `bar_blocks` 丢弃 (无可见文本)。绘制顺序/分组/圆角全由 dwm `config.h` 决定, 注册了但 config 未列的块 (如当前 volume) 直接不绘制。**注意** writer 侧若给空 block 加颜色码 (如 `^c...^`) 会使其"有可见文本"而不被丢弃, 故 `weather` 仍保留 `[ -n ]` 判断。回归测试 `tests/status-panes_test.sh`
 - `tools/calendar.sh:3` source 路径已修复为 `$(dirname "$0")/../utils/notify.sh`
+- **电池条没按比例绘制已修复**: 原填充宽 `inside_w * ((percent + 50) / 100)` 把四舍五入写进了整除 —— 外层 `(percent+50)/100` 只有 0 或 1, 表现为 <50% 全空、≥50% 直接跳到近满格; 且外框颜色靠上一 block 的 `^c` 漏色决定。现电池/额度条合并为 `bar_gauge`, 填充按 `inner * pct / 100`, 非零比例至少留 1px (低电量仍可见), 外框与填充统一按 fg 上色。回归测试 `tests/status-bar-gauge_test.sh` (几何/端子/方向/边界/调用方静态守卫)
 
 ### VPS 流量额度（VPSBandwidth）
 
