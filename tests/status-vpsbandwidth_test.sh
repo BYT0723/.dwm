@@ -146,7 +146,7 @@ for bad in 'hello' '1|2' '1|2|3|4' 'a|b|c' '' $'1|2|3\nextra'; do
 done
 
 section "C: dedione provider"
-PAGE_HTML='<html>... vtoken=c07a6e73ef3e6a5b10e2ed43d4b54e62 ...</html>'
+PAGE_HTML='<html>... vtoken=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ...</html>'
 API_JSON='{"bandwidth":{"used_gb":193.27,"limit_gb":500,"percent":38.65}}'
 export PAGE_HTML API_JSON
 
@@ -167,7 +167,7 @@ first=$(sed -n 1p "$CURL_LOG")
 second=$(sed -n 2p "$CURL_LOG")
 [[ $first == *'action=productdetails'* && $first == *'WHMCSlogin_auth_tk=TOK123'* && $first == *' -c '* ]] \
     && ok "step 1: page + auth cookie + jar" || no "step 1 args ($first)"
-[[ $second == *'vtoken=c07a6e73ef3e6a5b10e2ed43d4b54e62'* && $second == *'api=json'* && $second == *' -b '* ]] \
+[[ $second == *'vtoken=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'* && $second == *'api=json'* && $second == *' -b '* ]] \
     && ok "step 2: fresh vtoken + session jar" || no "step 2 args ($second)"
 
 PAGE_HTML='<html>login page, no token</html>'
@@ -175,7 +175,7 @@ out=$(vpsbandwidth_fetch_dedione 2>/dev/null)
 rc=$?
 [[ -z $out ]] && ((rc != 0)) && ok "missing vtoken -> failure, clean stdout" || no "missing vtoken (rc=$rc out=$out)"
 
-PAGE_HTML='<html>vtoken=c07a6e73ef3e6a5b10e2ed43d4b54e62</html>'
+PAGE_HTML='<html>vtoken=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</html>'
 API_JSON='The csrf tokens do not match!!'
 out=$(vpsbandwidth_fetch_dedione 2>/dev/null)
 rc=$?
