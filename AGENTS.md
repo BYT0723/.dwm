@@ -89,7 +89,8 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 
 | 函数 | 调用者 |
 | ---- | ------ |
-| `update_vps_bandwidth()` | dwm-status.sh launch_daemon (`interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth`) — core: 读 `provider` → 调度 `vpsbandwidth_fetch_<provider>` → 校验 `used\|limit\|percent` → 原子写缓存; 失败保留旧值 + `stale=1`, **恒返回 0** (避免 interval daemon 每轮弹 critical) |
+| `update_vps_bandwidth()` | dwm-status.sh launch_daemon (`interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth`) — core: 读 `provider` → 调度 `vpsbandwidth_fetch_<provider>` → 校验 `used\|limit\|percent` → 原子写缓存 (写前先取旧 percent) → 阈值首超通知; 失败保留旧值 + `stale=1`, **恒返回 0** (避免 interval daemon 每轮弹 critical) |
+| `_vpsbw_alert()` | update_vps_bandwidth (成功写缓存后) — 取旧缓存 percent 与新值各自的档位 (0/80/90), **仅在新档位 > 旧档位且 >0** 时 `system-notify` 一次 (80 normal / 90 critical, 文案带剩余 GB); 降档/同档/失败静默。不落额外状态文件, 缓存本身即上次结果; 重启后无旧值按 0 档处理, 开机最多补发一次 |
 | `vpsbandwidth_fetch_dedione()` | update_vps_bandwidth (provider; 两步: 产品页下发会话 cookie + 新鲜 `vtoken` → 带两者请求 `api=json&act=bandwidth`; 凭证取 `dedione.auth_token` 或 Firefox `cookies.sqlite`) |
 | `vpsbandwidth_interval()` | dwm-status.sh (读 `.interval`, 缺失/非数字/<60 → 1800) |
 | `vpsbandwidth_config_get()` | 内部 (jq 读 `vpsbandwidth.json`, 缺文件/坏 JSON 输出空) |
@@ -617,6 +618,7 @@ dwm-status.sh
        → provider (默认 dedione): token = config.auth_token || Firefox cookies.sqlite
        → GET 产品页 (拿会话 cookie + 新鲜 vtoken) → GET api=json&act=bandwidth
        → 校验 > 原子写 /tmp/dwm-status/vps-bandwidth (失败保留旧值 + stale=1)
+       → 旧 percent 档位 vs 新值档位: 跨 80/90 档时 system-notify 一次 (降档/同档静默)
   → xsetroot -name "$status"
 
 dwm-statuscmd.sh (状态栏点击)
@@ -761,6 +763,7 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **WHMCS 面板不能直接复用页面 URL 里的 `vtoken`**: 实测 ① 只带 URL (含 vtoken) + 无 cookie → `302 /login`；② 只带 remember-me 令牌 `WHMCSlogin_auth_tk` → 产品页 200，并 `Set-Cookie` 一个 `WHMCSjQR...` 会话 cookie，页面内含**本次会话专属**的新 vtoken；③ 新 vtoken + 该会话 cookie → `api=json&act=bandwidth` 200；缺会话 cookie 直接返回 `The csrf tokens do not match!!`。故 provider 固定两步: 先 GET 产品页拿 cookie+vtoken，再 GET API，不能省。
 - **凭证零维护**: Firefox 把 `WHMCSlogin_auth_tk` 明文存在 `cookies.sqlite`，有效期约一年（实测到 2027-10）。`_vpsbw_ff_token` 用 `sqlite3 "file:<db>?immutable=1"` 只读（不锁库），profile 按 `profiles.ini` 的 `Default` 解析并回退 `*.default-release`；配置文件 `auth_token` 非空时优先，便于换浏览器/排查。令牌过期只需浏览器重新登录，代码与配置不用改。
 - **失败不能向上抛**: `interval_update_daemon` 对非 0 返回会每轮弹 critical（30 分钟一次刷屏），故 core 恒返回 0，失败只把缓存标记 `stale=1` 并保留旧值；告警用 stamp 文件（`~/.local/state/dwm/status/vpsbandwidth-alert`）去重，成功一次自动清除，展示层行尾加 `!`。
+- **阈值首超通知落在 core 而非展示层**: `print_vps_bandwidth` 被 `panes()` 每秒调用, 在那里通知会每秒刷屏; 通知应在 `update_vps_bandwidth` 成功写缓存后做。去重**不需要额外状态文件**: 覆盖缓存前先取旧 `percent`, 与新值各自归到 80/90 档, 仅「新档 > 旧档且新档 >0」时通知一次 (80 normal / 90 critical), 降档/同档/刷新失败静默。月度额度回落 <80% 后缓存自然变低档, 下次跨档可再次提醒。代价是缓存位于 `/tmp`, 重启后在已超标状态下开机会补发一次 (刻意选择: 宁可多提醒一次, 不漏报)。回归测试 `tests/status-vpsbandwidth_test.sh` Section F。
 - **core / provider 分离**: `update_vps_bandwidth` 只做配置→调度→校验→缓存，不得出现 whmcs/vtoken/cookie/curl（`tests/status-vpsbandwidth_test.sh` 静态守卫）；新增厂商 = 加 `vpsbandwidth_fetch_<name>` + 配置段 + 改 `provider`，展示/点击/dwm 侧零改动。provider 契约: stdout 一行 `used_gb|limit_gb|percent`，失败非 0 且 stdout 为空，诊断走 stderr。
 
 ### MPD / MPRIS

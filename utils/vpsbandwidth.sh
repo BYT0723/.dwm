@@ -49,8 +49,46 @@ _vpsbw_fail() {
     return 0
 }
 
+# 阈值首超通知: 用缓存里的旧值算旧档位, 与本次新值档位比较。
+# 只在跨档升级 (0→80, 80→90, 0→90) 时通知; 降档/同档静默。
+# 不落额外状态文件: /tmp 缓存本身就是上一次成功刷新的结果; 重启后无旧值
+# 按档位 0 处理, 开机后最多补发一次。
+_vpsbw_alert() {
+    local prev=$1 used=$2 limit=$3 percent=$4
+    local prev_band=0 new_band=0 pct free urgency
+
+    if [[ $prev =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        pct=$((10#${prev%.*}))
+        if ((pct >= 90)); then
+            prev_band=90
+        elif ((pct >= 80)); then
+            prev_band=80
+        fi
+    fi
+
+    pct=$((10#${percent%.*}))
+    if ((pct >= 90)); then
+        new_band=90
+    elif ((pct >= 80)); then
+        new_band=80
+    fi
+
+    ((new_band > prev_band && new_band > 0)) || return 0
+
+    free=$(awk -v l="$limit" -v u="$used" \
+        'BEGIN { f = l - u; if (f < 0) f = 0; printf "%.1f", f }')
+    urgency=normal
+    ((new_band == 90)) && urgency=critical
+    declare -F system-notify >/dev/null 2>&1 \
+        && system-notify "$urgency" "VPS Bandwidth" \
+            "used ${used} / ${limit} GB (${percent}%), ${free} GB left (${new_band}% threshold)" \
+            2>/dev/null
+    return 0
+}
+
 update_vps_bandwidth() {
     local provider fn out re num rc
+    local prev_percent used limit percent
     provider=$(vpsbandwidth_config_get '.provider')
     provider=${provider:-dedione}
     fn="vpsbandwidth_fetch_$provider"
@@ -69,10 +107,17 @@ update_vps_bandwidth() {
         return 0
     fi
 
+    # 覆盖前取旧 percent 作档位基准 (缺失/损坏时为空, 由 _vpsbw_alert 按 0 处理)
+    prev_percent=""
+    [[ -f $vpsbandwidth_cache ]] \
+        && IFS='|' read -r _ _ prev_percent _ _ <"$vpsbandwidth_cache" 2>/dev/null
+
     mkdir -p "$(dirname "$vpsbandwidth_cache")"
     if printf '%s|%s\n' "$out" "$(date +%s)|0" >"$vpsbandwidth_cache.tmp" \
         && mv -f "$vpsbandwidth_cache.tmp" "$vpsbandwidth_cache"; then
         rm -f "$vpsbandwidth_stamp"
+        IFS='|' read -r used limit percent <<<"$out"
+        _vpsbw_alert "$prev_percent" "$used" "$limit" "$percent"
     fi
     return 0
 }

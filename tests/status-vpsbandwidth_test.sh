@@ -5,6 +5,7 @@
 #   C. dedione provider: 两步抓取 (页面 vtoken + 会话 cookie → API)、token 优先级
 #   D. 展示: 193/500G 39% + 阈值配色 + stale "!" + 无缓存不输出 (竖条为余量 100-已用%)
 #   E. 静态守卫: core 不认识 WHMCS/vtoken/cookie; print 不联网
+#   F. 阈值首超通知: 缓存旧档位 vs 新值档位, 跨档升级才通知 (80 normal / 90 critical)
 #
 # 运行: bash tests/status-vpsbandwidth_test.sh
 
@@ -246,6 +247,114 @@ for word in whmcs vtoken cookie curl; do
 done
 printer=$(awk '/^print_vps_bandwidth\(\)/,/^}/' "$REPO/dwm-status-print.sh")
 [[ $printer != *curl* ]] && ok "print does not fetch" || no "print does not fetch"
+
+section "F: 阈值首超通知"
+# 阈值语义: 旧缓存 percent 档位 vs 新值档位, 只在跨档升级时通知一次;
+# 降档/同档静默, 回落 <80% 后下次跨档可再次提醒。无新增状态文件。
+vpsbandwidth_fetch_pct() { printf '%s\n' "$PCT_LINE"; }
+write_config <<'JSON'
+{"provider": "pct"}
+JSON
+alert_count() { wc -l <"$NOTIFY_LOG"; }
+
+# 冷启动无缓存: 视为档位 0, 已超标补发一次 (方案 A)
+rm -f "$VPSBANDWIDTH_CACHE" "$VPSBANDWIDTH_STAMP"
+: >"$NOTIFY_LOG"
+PCT_LINE='85|500|85'
+update_vps_bandwidth
+rc=$?
+(( $(alert_count) == 1 )) && ok "cold start >=80% notifies once" || no "cold start >=80% notifies once ($(alert_count))"
+grep -q '^normal' "$NOTIFY_LOG" && ok "80 band is normal" || no "80 band is normal ($(cat "$NOTIFY_LOG"))"
+grep -q '80% threshold' "$NOTIFY_LOG" && ok "80 band message" || no "80 band message ($(cat "$NOTIFY_LOG"))"
+cache_is 85 500 85 0 && ((rc == 0)) && ok "cold start writes cache + rc 0" || no "cold start writes cache + rc 0 (rc=$rc)"
+
+# 79.9% 不触发, 且写入缓存
+rm -f "$VPSBANDWIDTH_CACHE"
+: >"$NOTIFY_LOG"
+PCT_LINE='79.9|500|79.9'
+update_vps_bandwidth
+(( $(alert_count) == 0 )) && ok "79.9% below threshold silent" || no "79.9% below threshold silent ($(alert_count))"
+cache_is 79.9 500 79.9 0 && ok "79.9% cached" || no "79.9% cached"
+
+# 79.9 -> 82 跨 80 档: 一条 normal
+PCT_LINE='82|500|82'
+update_vps_bandwidth
+(( $(alert_count) == 1 )) && ok "79.9 -> 82 crosses 80, notifies" || no "79.9 -> 82 crosses 80 ($(alert_count))"
+
+# 82 -> 86 同档: 静默
+PCT_LINE='86|500|86'
+update_vps_bandwidth
+(( $(alert_count) == 1 )) && ok "82 -> 86 same band silent" || no "82 -> 86 same band silent ($(alert_count))"
+
+# 86 -> 91 跨 90 档: 第二条 critical
+PCT_LINE='91|500|91'
+update_vps_bandwidth
+(( $(alert_count) == 2 )) && ok "86 -> 91 crosses 90, notifies" || no "86 -> 91 crosses 90 ($(alert_count))"
+sed -n 2p "$NOTIFY_LOG" | grep -q '^critical' && ok "90 band is critical" || no "90 band is critical ($(sed -n 2p "$NOTIFY_LOG"))"
+grep -q '90% threshold' "$NOTIFY_LOG" && ok "90 band message" || no "90 band message ($(cat "$NOTIFY_LOG"))"
+
+# 91 -> 95 同档: 静默
+PCT_LINE='95|500|95'
+update_vps_bandwidth
+(( $(alert_count) == 2 )) && ok "91 -> 95 same band silent" || no "91 -> 95 same band silent ($(alert_count))"
+
+# 95 -> 85 降档: 静默, 不回退通知
+PCT_LINE='85|500|85'
+update_vps_bandwidth
+(( $(alert_count) == 2 )) && ok "95 -> 85 downgrade silent" || no "95 -> 85 downgrade silent ($(alert_count))"
+
+# 85 -> 92 再次跨 90 档: 再提醒
+PCT_LINE='92|500|92'
+update_vps_bandwidth
+(( $(alert_count) == 3 )) && ok "85 -> 92 crosses 90 again" || no "85 -> 92 crosses 90 again ($(alert_count))"
+
+# 92 -> 12 月度重置: 静默
+PCT_LINE='12|500|12'
+update_vps_bandwidth
+(( $(alert_count) == 3 )) && ok "quota reset silent" || no "quota reset silent ($(alert_count))"
+
+# 12 -> 81 重置后再跨 80 档: 再提醒
+PCT_LINE='81|500|81'
+update_vps_bandwidth
+(( $(alert_count) == 4 )) && ok "after reset crosses 80 again" || no "after reset crosses 80 again ($(alert_count))"
+
+# 刷新失败: 不评估阈值 (只走既有失败告警)、档位不变
+write_config <<'JSON'
+{"provider": "not-installed"}
+JSON
+seed_cache '81|500|81|1700000000|0'
+: >"$NOTIFY_LOG"
+update_vps_bandwidth
+grep -q 'threshold' "$NOTIFY_LOG" && no "failed refresh alerts threshold" || ok "failed refresh does not alert threshold"
+cache_is 81 500 81 1 && ok "failed refresh keeps stale" || no "failed refresh keeps stale"
+
+# 旧缓存 percent 损坏: 按档位 0 处理, 不报错
+write_config <<'JSON'
+{"provider": "pct"}
+JSON
+seed_cache '1|500|abc|1700000000|0'
+: >"$NOTIFY_LOG"
+PCT_LINE='85|500|85'
+update_vps_bandwidth
+rc=$?
+(( $(alert_count) == 1 )) && ((rc == 0)) && ok "corrupt old percent treated as 0" || no "corrupt old percent treated as 0 (rc=$rc, $(alert_count))"
+
+# 无 system-notify: 静默不崩, 仍写缓存
+out=$( (
+    unset -f system-notify
+    rm -f "$VPSBANDWIDTH_CACHE"
+    PCT_LINE='91|500|91'
+    update_vps_bandwidth
+) 2>&1)
+rc=$?
+[[ -z $out ]] && ((rc == 0)) && ok "missing system-notify is silent" || no "missing system-notify (rc=$rc out=$out)"
+cache_is 91 500 91 0 && ok "missing system-notify still caches" || no "missing system-notify still caches"
+
+# 静态守卫: 展示层保持纯读; core 不引入新状态文件
+printer=$(awk '/^print_vps_bandwidth\(\)/,/^}/' "$REPO/dwm-status-print.sh")
+[[ $printer != *notify* ]] && ok "print stays notify-free" || no "print stays notify-free"
+core=$(awk '/^update_vps_bandwidth\(\)/,/^}/' "$REPO/utils/vpsbandwidth.sh")
+[[ $core != *vpsbandwidth-level* ]] && ok "no extra alert state file" || no "no extra alert state file"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 exit $((fail > 0))
