@@ -176,6 +176,12 @@ update_mpd_daemon() {
 }
 
 # 用于长间隔更新
+#
+# 上次执行时间落盘 ($DWM_STATUS_INTERVAL_DIR/interval-<task>.last, 默认
+# /tmp/dwm-status): 热重启 (dwm SIGHUP → autostart → dwm-status.sh reboot)
+# 会重建本 daemon, 只存内存的话每次重启都会立刻再跑一次; VPS 流量/天气都是
+# 外部接口, 频繁热重启会变成固定多发请求, 触发限流甚至封控。落盘后同一
+# interval 内重启直接跳过 (冷启动 /tmp 已清空或状态损坏时仍然立即执行)。
 interval_update_daemon() {
     local interval=600
     local check_interval=60
@@ -191,16 +197,26 @@ interval_update_daemon() {
 
     shift $((OPTIND - 1))
 
-    local last_slot=-1
+    local state_dir=${DWM_STATUS_INTERVAL_DIR:-/tmp/dwm-status}
+    local stamp=$state_dir/interval-${*//[^a-zA-Z0-9]/_}.last
+    local last_run now
+
+    # 状态损坏/长度异常一律按 0 处理 (fail-open, 别把任务永久锁死)
+    last_run=$(cat "$stamp" 2>/dev/null)
+    [[ $last_run =~ ^[0-9]{1,11}$ ]] || last_run=0
+    last_run=$((10#$last_run))
+    mkdir -p "$state_dir" 2>/dev/null
 
     ((check_interval > interval)) && check_interval=$interval
 
     while true; do
         now=$(date +%s)
-        slot=$((now / interval))
+        # 时间戳在未来 (时钟回退): 按未执行处理, 避免任务被永久锁死
+        ((last_run > now)) && last_run=0
 
-        if ((slot != last_slot)); then
-            last_slot=$slot
+        if ((now - last_run >= interval)); then
+            last_run=$now
+            printf '%s\n' "$now" >"$stamp" 2>/dev/null
 
             if declare -F "$1" >/dev/null; then
                 # 是函数 → 当前 shell 执行
@@ -213,7 +229,6 @@ interval_update_daemon() {
                     system-notify critical "[DWM Status Interval Update Daemon]" "task timeout or failed: $*"
                 fi
             fi
-
         fi
 
         sleep "$check_interval"

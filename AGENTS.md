@@ -615,6 +615,7 @@ dwm-status.sh
      id 字节, 由 dwm 的 bar_blocks 丢弃)
   → launch_daemon(update_*_daemon)
     └─ interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth
+       (上次执行时间落盘, 距上次不足 interval 的热重启直接跳过, 见已知问题)
        → provider (默认 dedione): token = config.auth_token || Firefox cookies.sqlite
        → GET 产品页 (拿会话 cookie + 新鲜 vtoken) → GET api=json&act=bandwidth
        → 校验 > 原子写 /tmp/dwm-status/vps-bandwidth (失败保留旧值 + stale=1)
@@ -755,6 +756,7 @@ calendar-lunar|󰃚|Lunar Calendar|
 
 - **音频服务卡死会拖停整条状态栏, 已加超时兜底**: `print_volume` 调 `amixer get Master`, 本机 ALSA default 是 pipewire-pulse 插件 (`amixer info` → `Card default 'pulse'`)。USB DAC (Fosi DS2) 卡在控制传输 (`dmesg` 的 `err -110`, wireplumber 停在 `usb_start_wait_urb` D 态) 时 pipewire-pulse 不响应, 单次 amixer 要阻塞 ~30s; 而 `launch_refresh` 是串行 `panes(); sleep 1`, 一个慢 block 让状态栏每 ~31s 才刷新一次 (表现为“数据没有更新”, 期间各 daemon 仍在正常写缓存)。现给 amixer 加 `timeout 1` + 空值 guard (无 Master 时不再对空串做 `-eq`)。回归测试 `tests/status-volume-hang_test.sh` (场景 C/D 旧代码 FAIL)
 - **status writer 不再注入 pill 底色 (`^b`)**: `panes()` 原用 `new_pane()` 给每个 pane 组首 block 加 `^b$black^`, 理由是"让 pane 颜色跟随 xrdb 主题"。但 dwm 的 `SchemeStatus` bg = `col_black`, `loadxrdb()` 已用 `strncpy` **原地覆盖**为 xrdb 的 `dwm.col_black` (dwm.c), 且 SIGHUP restart 时 `autostart.sh` 会跑 `dwm-status.sh reboot` 让 writer 重读同一份 xrdb —— 两边同源同值, `^b` 纯属重复写入。现 `new_pane` 已删除, `panes()` 直接拼接 `${ST_*_BYTE}<text>` 且每块独占一行、按语义分组注释 (系统负载/未读/网络/天气/容器/录屏/代理/音频/电源时钟), 行序与 dwm 绘制顺序无关, 纯为阅读; 空 block 只留 id 字节, 由 dwm 的 `bar_blocks` 丢弃 (无可见文本)。绘制顺序/分组/圆角全由 dwm `config.h` 决定, 注册了但 config 未列的块 (如当前 volume) 直接不绘制。**注意** writer 侧若给空 block 加颜色码 (如 `^c...^`) 会使其"有可见文本"而不被丢弃, 故 `weather` 仍保留 `[ -n ]` 判断。回归测试 `tests/status-panes_test.sh`
+- **热重启会固定重跑一次 interval 任务已修复 (VPS 流量/天气被限流)**: `interval_update_daemon` 原用内存变量 `last_slot` 记调度状态, 新进程从 -1 起算, 于是 dwm 每次 SIGHUP 重启 (`autostart.sh` → `dwm-status.sh reboot` → `reboot_daemon` 重建全部 daemon) 都会立刻再跑一次 `update_vps_bandwidth` (两步 HTTP) / `update_weather`; 频繁切主题/重启 dwm 就成了对厂商 API 的固定多发请求, 会触发限流甚至封控。现把上次执行时间落盘到 `$DWM_STATUS_INTERVAL_DIR/interval-<task>.last` (默认 `/tmp/dwm-status`, 测试可覆盖), 启动时读取并在「距上次不足 interval」时跳过; 时间戳在执行前写入 (执行中重启也不重发), 冷启动 (`/tmp` 已清空)、状态损坏或时间戳在未来 (时钟回退) 均 fail-open 立即执行一次。回归测试 `tests/status-interval-daemon_test.sh` (旧代码 B/C 组 FAIL)
 - `tools/calendar.sh:3` source 路径已修复为 `$(dirname "$0")/../utils/notify.sh`
 - **电池条没按比例绘制已修复**: 原填充宽 `inside_w * ((percent + 50) / 100)` 把四舍五入写进了整除 —— 外层 `(percent+50)/100` 只有 0 或 1, 表现为 <50% 全空、≥50% 直接跳到近满格; 且外框颜色靠上一 block 的 `^c` 漏色决定。现电池/额度条合并为 `bar_gauge`, 填充按 `inner * pct / 100`, 非零比例至少留 1px (低电量仍可见), 外框与填充统一按 fg 上色。回归测试 `tests/status-bar-gauge_test.sh` (几何/端子/方向/边界/调用方静态守卫)
 

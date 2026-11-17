@@ -231,6 +231,7 @@ bash tests/lib-module_test.sh
 bash tests/autostart_test.sh
 bash tests/screen-lock_test.sh                  # 锁屏链路: 单一权威 / 抑制即 reset / DPMS 只在锁屏期
 bash tests/lock-mute_test.sh                    # 锁屏静音: 快照时机 / 全 sink 静音 / 只还原本次改过的（含 SIGTERM 兜底）
+bash tests/status-interval-daemon_test.sh       # interval daemon: 热重启同 interval 内不重复请求（VPS/天气限流）
 ```
 
 上面是常用用例，完整列表 `ls tests/*_test.sh`。
