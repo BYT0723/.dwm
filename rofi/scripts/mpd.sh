@@ -110,6 +110,7 @@ _osd_wait_daemon() {
 # 占位符: %state% %title% %artist% %album% %album_artist% %elapsed% %duration% %empty% 等;
 # 正文用 \n 换行。改完下次打开本菜单即生效 (内容变了才 restart)。
 MPDRIS2_NOTIFY_ARGS=(
+    --no-notification
     --notification-summary "%state%"
     --notification-summary-paused "%state%"
     --notification-body "<b>%title%</b>\n%artist%\n%album%\n%empty%"
