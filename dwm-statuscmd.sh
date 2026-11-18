@@ -196,7 +196,8 @@ declare -A actions=(
     [$ST_SCREENCAST,$right]='"$TOOLS_DIR/screencast.sh" stop'
     [$ST_DOCKER,$left]=_docker_list
     [$ST_DOCKER,$right]=_docker_monitor
-    [$ST_VPSBANDWIDTH,$left]=vpsbandwidth_open_page
+    [$ST_VPSBANDWIDTH,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/vpsbandwidth-collapse" ]] && rm -f "$D/vpsbandwidth-collapse" || { mkdir -p "$D" && touch "$D/vpsbandwidth-collapse"; }'
+    [$ST_VPSBANDWIDTH,$middle]=vpsbandwidth_open_page
     [$ST_VPSBANDWIDTH,$right]=_vpsbandwidth_notify
 )
 
