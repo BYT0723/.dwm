@@ -161,8 +161,8 @@ _vpsbandwidth_notify() {
 left=1 middle=2 right=3 scroll_up=4 scroll_down=5
 
 declare -A actions=(
-    [$ST_DATE,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/date-collapse" ]] && rm -f "$D/date-collapse" || { mkdir -p "$D" && touch "$D/date-collapse"; }'
-    [$ST_DATE,$right]='"$WORK_DIR/tools/calendar.sh" lunar'
+    [$ST_DATE,$left]='"$WORK_DIR/tools/calendar.sh" lunar'
+    [$ST_DATE,$right]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/date-collapse" ]] && rm -f "$D/date-collapse" || { mkdir -p "$D" && touch "$D/date-collapse"; }'
     [$ST_BATTERY,$left]='notify-send -c status -i battery -h string:x-dunst-stack-tag:batteryInformation "Battery" "$(acpi -i)"'
     [$ST_BATTERY,$right]=_battery_dpms
     [$ST_BATTERY,$scroll_up]='"$TOOLS_DIR/brightness.sh" up'
@@ -172,18 +172,18 @@ declare -A actions=(
     [$ST_VOLUME,$scroll_up]='"$TOOLS_DIR/volume.sh" up'
     [$ST_VOLUME,$scroll_down]='"$TOOLS_DIR/volume.sh" down'
     [$ST_DISK,$left]='notify-send -c status -h string:x-dunst-stack-tag:diskInformation "💾 Storage" "$(LANG=en_US.UTF-8 df -h -x tmpfs -x devtmpfs)"'
-    [$ST_CPU,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/cpu-collapse" ]] && rm -f "$D/cpu-collapse" || { mkdir -p "$D" && touch "$D/cpu-collapse"; }'
-    [$ST_CPU,$right]=_cpu_monitor
-    [$ST_WEATHER,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/weather-collapse" ]] && rm -f "$D/weather-collapse" || { mkdir -p "$D" && touch "$D/weather-collapse"; }'
+    [$ST_CPU,$left]=_cpu_monitor
+    [$ST_CPU,$right]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/cpu-collapse" ]] && rm -f "$D/cpu-collapse" || { mkdir -p "$D" && touch "$D/cpu-collapse"; }'
+    [$ST_WEATHER,$left]='W="$HOME/.local/state/dwm/cache"; notify-send -c status -i weather -h string:x-dunst-stack-tag:weatherForecast "Weather Forecast" "当前天气:$(tr "\t" " " < "$W/weather")\n\n$(cat "$W/weather-forecast")"'
     [$ST_WEATHER,$middle]='xdg-open https://wttr.in/?T'
-    [$ST_WEATHER,$right]='W="$HOME/.local/state/dwm/cache"; notify-send -c status -i weather -h string:x-dunst-stack-tag:weatherForecast "Weather Forecast" "当前天气:$(tr "\t" " " < "$W/weather")\n\n$(cat "$W/weather-forecast")"'
+    [$ST_WEATHER,$right]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/weather-collapse" ]] && rm -f "$D/weather-collapse" || { mkdir -p "$D" && touch "$D/weather-collapse"; }'
     [$ST_MPD,$left]='"$ROFI_SCRIPT_DIR/mpd.sh"'
     [$ST_MPD,$middle]='systemctl --user stop mpdris2-rs.service mpd.service'
     [$ST_MPD,$scroll_up]='_mpd_volume up'
     [$ST_MPD,$scroll_down]='_mpd_volume down'
     [$ST_MPD,$right]=_mpd_rmpc
-    [$ST_NET,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/net-traffic-collapse" ]] && rm -f "$D/net-traffic-collapse" || { mkdir -p "$D" && touch "$D/net-traffic-collapse"; }'
-    [$ST_NET,$right]=_net_speedtest
+    [$ST_NET,$middle]=_net_speedtest
+    [$ST_NET,$right]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/net-traffic-collapse" ]] && rm -f "$D/net-traffic-collapse" || { mkdir -p "$D" && touch "$D/net-traffic-collapse"; }'
     [$ST_MAIL,$left]='thunderbird -mail &'
     [$ST_MAIL,$right]=_mail_aerc
     [$ST_RSS,$left]=_rss_notify
@@ -196,9 +196,9 @@ declare -A actions=(
     [$ST_SCREENCAST,$right]='"$TOOLS_DIR/screencast.sh" stop'
     [$ST_DOCKER,$left]=_docker_list
     [$ST_DOCKER,$right]=_docker_monitor
-    [$ST_VPSBANDWIDTH,$left]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/vpsbandwidth-collapse" ]] && rm -f "$D/vpsbandwidth-collapse" || { mkdir -p "$D" && touch "$D/vpsbandwidth-collapse"; }'
+    [$ST_VPSBANDWIDTH,$left]=_vpsbandwidth_notify
     [$ST_VPSBANDWIDTH,$middle]=vpsbandwidth_open_page
-    [$ST_VPSBANDWIDTH,$right]=_vpsbandwidth_notify
+    [$ST_VPSBANDWIDTH,$right]='D="$HOME/.local/state/dwm/status"; [[ -f "$D/vpsbandwidth-collapse" ]] && rm -f "$D/vpsbandwidth-collapse" || { mkdir -p "$D" && touch "$D/vpsbandwidth-collapse"; }'
 )
 
 # --- Main dispatch ---

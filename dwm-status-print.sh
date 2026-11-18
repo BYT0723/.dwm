@@ -333,11 +333,10 @@ print_vps_bandwidth() {
         fg="$yellow"
     fi
 
-    local x=4 y=4 w=8 h=24 f=18
+    local x=0 y=4 w=8 h=24 f=18
     if [ ! -f "$HOME/.local/state/dwm/status/vpsbandwidth-collapse" ]; then
-        printf "^c$fg^used:%dG${STACKED_SPLIT}limit:%dG" "$used_g" "$limit_g"
-        [[ $stale == 1 ]] && printf "!"
-        x=0
+        printf "^c$fg^used: %dG${STACKED_SPLIT}limit:%dG" "$used_g" "$limit_g"
+        # [[ $stale == 1 ]] && printf "!"
     fi
     # 右侧 10x24 竖条: 余量 (100 - 已用%), 从下向上填充; 耗尽/超额时 bar_gauge 钳制为空
     bar_gauge $x $y $w $h "$((100 - pct))" "$fg" v $f
