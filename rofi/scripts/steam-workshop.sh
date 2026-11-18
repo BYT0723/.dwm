@@ -112,12 +112,22 @@ handle_update() {
         system-notify normal "Steam Workshop" "No downloads yet"$'\n'"$root"
         return
     fi
+    local raw disp
+    local -A disp_to_raw=()
+    local -a disps=()
+    while IFS= read -r raw; do
+        [[ -n "$raw" ]] || continue
+        disp=$(sw_scope_display "$raw")
+        [[ -n "${disp_to_raw[$disp]:-}" ]] && disp="$raw"
+        disp_to_raw["$disp"]="$raw"
+        disps+=("$disp")
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d ! -name 'steamapps' -printf '%f\n' 2>/dev/null | LC_ALL=C sort)
     sel=$( {
         echo "All Apps"
-        find "$root" -mindepth 1 -maxdepth 1 -type d ! -name 'steamapps' -printf '%f\n' 2>/dev/null | LC_ALL=C sort
+        (( ${#disps[@]} )) && printf '%s\n' "${disps[@]}"
     } | module_sub_rofi "Steam Workshop" "Select scope to update")
     [[ -z "$sel" ]] && return
-    [[ "$sel" != "All Apps" ]] && scope="$sel"
+    [[ "$sel" != "All Apps" ]] && scope="${disp_to_raw[$sel]:-$sel}"
     user=$(_pick_user) || return
     system-notify low "Steam Workshop" "Checking for updates"$'\n'"$sel"
     (

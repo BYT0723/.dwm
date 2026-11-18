@@ -355,4 +355,24 @@ _out=$(sw_download 431960 3810650535 anonymous "Wallpaper Engine")
 assert_cond "aurelia-absent: legacy steamcmd path" '[[ $? -eq 0 && $_out == "$STEAMCMD_INSTALL_DIR/WallpaperEngine_431960/3810650535" ]] && grep -Fq "+workshop_download_item 431960 3810650535" "$STEAMCMD_ARGS_LOG"'
 export PATH="$ORIG_PATH"
 
+# ---- item_title / scope_display / sync label with project.json ----
+TROOT="$TEST_DIR/titleroot"
+mkdir -p "$TROOT/WallpaperEngine_431960/111" "$TROOT/LegacyName/222" "$TROOT/431960/333" "$TROOT/badjson/444"
+printf '{"title":"Wavy grass","type":"web"}' >"$TROOT/WallpaperEngine_431960/111/project.json"
+printf '{"title":"A|B","type":"web"}' >"$TROOT/LegacyName/222/project.json"
+printf 'not json' >"$TROOT/badjson/444/project.json"
+assert_cond "item_title: reads project.json" '[[ $(sw_item_title "$TROOT/WallpaperEngine_431960/111") == "Wavy grass" ]]'
+assert_cond "item_title: pipe sanitized" '[[ $(sw_item_title "$TROOT/LegacyName/222") == "A B" ]]'
+assert_cond "item_title: missing returns 1" '! sw_item_title "$TROOT/431960/333" >/dev/null'
+assert_cond "item_title: bad json returns 1" '! sw_item_title "$TROOT/badjson/444" >/dev/null'
+assert_cond "scope_display: app_appid" '[[ $(sw_scope_display "WallpaperEngine_431960") == "WallpaperEngine (431960)" ]]'
+assert_cond "scope_display: pure digits kept" '[[ $(sw_scope_display "431960") == "431960" ]]'
+assert_cond "scope_display: legacy kept" '[[ $(sw_scope_display "LegacyName") == "LegacyName" ]]'
+# sync label: stub check/run to isolate label assembly (no network/download)
+sw_check_updates() { printf 'UPDATE|431960|111|%s/WallpaperEngine_431960/111\nUPDATE|431960|222|%s/431960/333\n' "$TROOT" "$TROOT"; }
+sw_run_updates() { cat >/dev/null; echo "2 0"; }
+_sync_out=$(sw_sync_updates "$TROOT" anonymous)
+assert_cond "sync: title (id) label" 'grep -Fq "OK|111|Wavy grass (111)" <<<"$_sync_out"'
+assert_cond "sync: fallback parent/id" 'grep -Fq "OK|222|431960/222" <<<"$_sync_out"'
+
 exit $FAIL

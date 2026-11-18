@@ -431,9 +431,11 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `sw_download()`     | steam-workshop.sh `_download` / `handle_update` 循环 (driver: `STEAM_WORKSHOP_DRIVER=auto`(默认) 且有 aurelia 时优先 aurelia, 失败落回 steamcmd; `=steamcmd` 强制老路; 签名/stdout/rc 语义不变, 调用方零改动; steamcmd 分支: 隔离根 `STEAMCMD_INSTALL_DIR`(兼容 `STEAM_WORKSHOP_DIR`, 缺省 `~/Downloads/steam-workshop`) 经 `+force_install_dir` 写入, 自动 `mkdir -p`; 按传入 user 一次 `+login <user>` (缺省 anonymous); 成功后经 `sw_flatten_download` 搬扁平并返回扁平路径; 非数字 appid/itemid 直接 rc=1 (两个 driver 都不调); 2=认证失败提示终端登录, 1=其他失败; aurelia 失败输出暂存仅 steamcmd 也失败时打出, 成功路径 stderr 保持干净 — 见已知问题 `sw_run_updates 2>&1`) |
 | `sw_api_time()`     | sw_check_updates (单条 GetPublishedFileDetails 取 `appid\|time_updated`, 需 jq) |
 | `sw_check_updates()` | steam-workshop.sh `handle_update` / auto (scope 为空=全部, 完整目录名精确匹配, 纯数字/app 后缀解析为 appid 后同 app 的 flat+deep 一并纳入; 枚举 flat 新/老式 + legacy 深, 非数字叶跳过;逐条 `sw_api_time` 比 `mtime`, 输出 `UPDATE\|…/CURRENT\|…/SKIP\|…` 排序行; 无候选或根非法返回 1) |
-| `_sw_dir_appid()` | sw_check_updates (目录名 → appid 唯一来源: 纯数字直接用, 取 `_<digits>` 后缀, 否则空) |
+| `_sw_dir_appid()` | sw_check_updates (目录名 → appid 唯一来源: 纯数字直接用, 取 `_<digits>` 后缀, 否则空), sw_scope_display (展示名解析) |
+| `sw_item_title()` | sw_sync_updates (本地 `<itemdir>/project.json:.title`, `|`→空格/去换行/首尾去空/标题截 50, 缺失/损坏/空返回 1) |
+| `sw_scope_display()` | rofi/scripts/steam-workshop.sh `handle_update` (scope 展示名: `WallpaperEngine_431960`→`WallpaperEngine (431960)`; 纯数字/无 appid/空名回退保持原样) |
 | `sw_run_updates()` | sw_sync_updates (stdin UPDATE 行逐条 `sw_download`+删源, stdout `ok fail[ fids...]`, 只回显不 notify) |
-| `sw_sync_updates()` | steam-workshop.sh `handle_update` 后台子 shell / auto (公共编排: `root [user] [scope...]` 逐 scope 检查合并 → 计数 UPDATE/CURRENT/SKIP → UPDATE 行喂 `sw_run_updates`; stdout 首行 `updates currents skips ok fail[ fids...]` + 明细 `OK\|itemid\|label`/`FAIL\|itemid\|label` (label=`父目录名/itemid` 纯本地推导, 如 `WallpaperEngine_431960/111`), 无候选返回 1, 只回显不 notify) |
+| `sw_sync_updates()` | steam-workshop.sh `handle_update` 后台子 shell / auto (公共编排: `root [user] [scope...]` 逐 scope 检查合并 → 计数 UPDATE/CURRENT/SKIP → UPDATE 行喂 `sw_run_updates`; stdout 首行 `updates currents skips ok fail[ fids...]` + 明细 `OK\|itemid\|label`/`FAIL\|itemid\|label` (label=`标题 (itemid)` 如 `Wavy grass (111)`, 标题取本地 `<itemdir>/project.json:.title`, 无标题回退 `父目录名/itemid`, 纯本地推导零网络), 无候选返回 1, 只回显不 notify) |
 | `sw_label_list()` | `handle_update` 后台子 shell / auto (`[OK\|FAIL]` + stdin 明细行 → `label[, …]` 最多列 10, 余 `(+N more)`; 只回显) |
 | `sw_result_msg()` | `handle_update` 后台子 shell / auto (`ok ok_labels fail fail_labels` → `N updated[: …][, M failed[: …]]` 汇总文案; 只回显) |
 
@@ -458,7 +460,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `_download()`        | steam-workshop.sh `_go` (后台下载 + notify: 标题 `资源名 — App名`, appname 透传 sw_download 作扁平应用部分; 0→Done+`Open folder` action (notify-send -A, 点击 `xdg-open` 落盘路径), 2→critical 终端登录指令, 其他→critical rc) |
 | `_go()`              | steam-workshop.sh handle_download (parse→info→user→download 全链; 始终 `_pick_user` 选用户后下载) |
 | `handle_download()`  | steam-workshop.sh (剪贴板合法直下, 否则 `module_input` 预填剪贴板供输入, 空输入返回) |
-| `handle_update()`    | steam-workshop.sh (scope 子菜单 All/各 app → `_pick_user` 选用户 (gated 条目失败进 FAIL 名单) → Checking 通知 → 后台子 shell 内 `sw_sync_updates`(无候选提示 No downloads yet → 0 条提示 up-to-date → 有更新直接 Updating 通知再跑下载, 无 `module_confirm`), 成功且路径变化删源, 汇总成功/失败 id) |
+| `handle_update()`    | steam-workshop.sh (scope 子菜单 All/各 app (展示名经 `sw_scope_display` 映射如 `WallpaperEngine (431960)`, 选择值映射回原始目录名) → `_pick_user` 选用户 (gated 条目失败进 FAIL 名单) → Checking 通知 → 后台子 shell 内 `sw_sync_updates`(无候选提示 No downloads yet → 0 条提示 up-to-date → 有更新直接 Updating 通知再跑下载, 无 `module_confirm`), 成功且路径变化删源, 汇总成功/失败 id+标题) |
 | `handle_open()`      | steam-workshop.sh (建隔离根(失败 critical)后 `xdg-open`) |
 
 ### rofi/scripts/wallpaper.sh

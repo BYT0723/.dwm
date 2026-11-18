@@ -16,6 +16,8 @@
 #   sw_sync_updates <root> [user] [scope...] → stdout 首行 "updates currents skips ok fail[ fids...]" + 明细 "OK|itemid|label"/"FAIL|itemid|label"; 无候选返回 1; 公共编排 (auto 与 rofi 共用)
 #   sw_label_list [OK|FAIL]      → stdin 明细行 → stdout "label[, …][ (+N more)]" (最多列 10); 只回显
 #   sw_result_msg <ok> <ok_labels> <fail> <fail_labels> → stdout 汇总文案; 只回显
+#   sw_item_title <itemdir>         → stdout 标题 (本地 project.json:.title); 缺失/损坏/空返回 1
+#   sw_scope_display <dirname>        → stdout scope 展示名 (WallpaperEngine_431960 → "WallpaperEngine (431960)")
 #   sw_item_info <url-or-id>     → stdout "appid|app名|资源名" (页面 → WebAPI → 失败)
 #   sw_list_users                → stdout "AccountName|PersonaName" 行 (按 Timestamp 倒序)
 #   sw_safe_app <appname> <appid>  → stdout 扁平首层目录名 (应用名去空格/非法字符, 为空回退 appid)
@@ -214,9 +216,38 @@ sw_run_updates() { # stdin UPDATE|appid|itemid|path 行; $1 = steam 用户
     if ((${#failed[@]})); then echo "$ok $fail ${failed[*]}"; else echo "$ok $fail"; fi
 }
 
+sw_item_title() { # <itemdir> → stdout workshop 标题 (本地 project.json:.title); 缺失/损坏/空返回 1
+    local dir="$1" t=""
+    [[ -n "$dir" && -f "$dir/project.json" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    t=$(jq -r '.title // empty' "$dir/project.json" 2>/dev/null) || return 1
+    t=$(printf '%s' "$t" | tr '|' ' ' | tr -d '\n' | sed 's/^ *//;s/ *$//')
+    [[ -n "$t" ]] || return 1
+    printf '%s' "$t"
+}
+
+sw_scope_display() { # <dirname> → scope 展示名 (WallpaperEngine_431960 → "WallpaperEngine (431960)"); 纯数字/无 appid 保持原样
+    local d="$1" appid="" name=""
+    [[ -n "$d" ]] || return 1
+    if [[ "$d" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$d"
+        return 0
+    fi
+    appid=$(_sw_dir_appid "$d")
+    if [[ -n "$appid" ]]; then
+        name="${d%_"$appid"}"
+        if [[ -n "$name" && "$name" != "$d" ]]; then
+            printf '%s (%s)' "$name" "$appid"
+            return 0
+        fi
+    fi
+    printf '%s' "$d"
+}
+
 sw_sync_updates() { # root [user] [scope...] → stdout 首行 "updates currents skips ok fail[ fids...]" + 明细 "OK|itemid|label"/"FAIL|itemid|label"; 无候选返回 1; 只回显, 不 notify
     # 公共编排: 逐 scope 检查合并 → 计数 → UPDATE 行跑 sw_run_updates (auto 与 rofi 共用, 调用方只做通知/日志/交互)
-    # label = 父目录名/itemid (如 WallpaperEngine_431960/111), 纯本地推导, 零新增网络
+    # label = "标题 (itemid)" (标题取本地 <itemdir>/project.json:.title, 如 "Wavy grass (111)");
+    #        无标题时回退 "父目录名/itemid" (如 WallpaperEngine_431960/111), 纯本地推导, 零新增网络
     local root="$1"
     local user="${2:-anonymous}"
     shift 2
@@ -235,11 +266,16 @@ sw_sync_updates() { # root [user] [scope...] → stdout 首行 "updates currents
     currents=$(grep -c '^CURRENT|' <<<"$lines" || true)
     skips=$(grep -c '^SKIP|' <<<"$lines" || true)
     local -A label_of=()
-    local st aid iid pth parent
+    local st aid iid pth parent title
     while IFS='|' read -r st aid iid pth; do
         [[ "$st" == "UPDATE" && -n "$iid" && -n "$pth" ]] || continue
         parent=$(basename "$(dirname "$pth")")
-        label_of["$iid"]="$parent/$iid"
+        if title=$(sw_item_title "$pth"); then
+            [[ ${#title} -gt 50 ]] && title="${title:0:47}..."
+            label_of["$iid"]="$title ($iid)"
+        else
+            label_of["$iid"]="$parent/$iid"
+        fi
     done <<<"$(grep '^UPDATE|' <<<"$lines")"
     summary=$(grep '^UPDATE|' <<<"$lines" | sw_run_updates "$user")
     echo "$updates $currents $skips $summary"

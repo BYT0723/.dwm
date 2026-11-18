@@ -134,6 +134,26 @@ wait
 check "update: 免确认直接下载" '[[ -f $TEST_DIR/dl.log ]]'
 check "update: 全程不弹确认" '[[ ! -f $TEST_DIR/confirm.called ]]'
 
+# ---- scope 显示映射 (name (id)) ----
+mkdir -p "$TEST_DIR/uproot3/WallpaperEngine_431960/111" "$TEST_DIR/uproot3/431960/222" "$TEST_DIR/uproot3/LegacyName/333"
+export STEAMCMD_INSTALL_DIR="$TEST_DIR/uproot3"
+reset_marks
+module_sub_rofi() { cat >"$TEST_DIR/menu.txt"; printf ''; }
+handle_update
+check "update: scope 显示 Name (id)" 'grep -Fqx "WallpaperEngine (431960)" "$TEST_DIR/menu.txt"'
+check "update: scope 纯数字保持" 'grep -Fqx "431960" "$TEST_DIR/menu.txt"'
+check "update: scope 无 appid 保持" 'grep -Fqx "LegacyName" "$TEST_DIR/menu.txt"'
+check "update: scope 不显示裸目录名" '! grep -Fqx "WallpaperEngine_431960" "$TEST_DIR/menu.txt"'
+# 显示名能映射回原始目录做检查
+reset_marks
+module_sub_rofi() { echo CALLED >>"$TEST_DIR/sub.called"; printf '%s' "${MODULE_SUB_RET:-}"; }
+MODULE_SUB_RET="WallpaperEngine (431960)"
+SW_CHECK_RC=1
+SW_CHECK_RET=""
+handle_update
+wait
+check "update: 显示名映射回原始目录" 'grep -Fq "CHECK:$TEST_DIR/uproot3|WallpaperEngine_431960" "$TEST_DIR/check.log"'
+
 # ---- Open ----
 export STEAMCMD_INSTALL_DIR="$TEST_DIR/newroot"
 reset_marks
