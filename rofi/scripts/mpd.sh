@@ -119,18 +119,29 @@ MPDRIS2_NOTIFY_ARGS=(
 # 生成/更新用户级 drop-in, 输出 systemctl 动作 (start|restart)。
 # 模板没变 → start (幂等, 不打断正在运行的桥); 变了 → daemon-reload 后 restart。
 # unit 里 % 是 specifier, 写入时必须转义成 %%; 数组里仍写单 % 便于阅读。
+# MPDRIS2_NOTIFY_ARGS 同时支持带值 flag (成对: --xxx "value") 与裸 boolean flag
+# (单个: --no-notification/-n/-v/-V 等)。裸 flag 按"下一个元素缺失或仍以 - 开头"判定,
+# 避免 i+=2 固定步长把后半数组整体错位并在尾部产生 "" 空参数 (mpdris2-rs 遇空直接
+# Unrecognized argument 退出 1, systemd 反复重启直至 start-limit-hit)。
 _mpris_override_action() {
     local dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/mpdris2-rs.service.d"
     local file="$dir/override.conf"
     local cmdline="ExecStart=/usr/bin/mpdris2-rs"
-    local want flag val i
-    for ((i = 0; i < ${#MPDRIS2_NOTIFY_ARGS[@]}; i += 2)); do
+    local want flag val i n
+    n=${#MPDRIS2_NOTIFY_ARGS[@]}
+    for ((i = 0; i < n; )); do
         flag="${MPDRIS2_NOTIFY_ARGS[i]}"
+        if ((i + 1 >= n)) || [[ "${MPDRIS2_NOTIFY_ARGS[i + 1]}" == -* ]]; then
+            cmdline+=" $flag"
+            ((i++))
+            continue
+        fi
         val="${MPDRIS2_NOTIFY_ARGS[i + 1]}"
         val="${val//$'\n'/\\n}" # 真实换行会破坏 unit 单行语法
         val="${val//\"/\\\"}"   # unit 双引号内需转义
         val="${val//%/%%}"      # systemd specifier 转义
         cmdline+=" $flag \"$val\""
+        ((i += 2))
     done
     want=$'[Service]\nExecStart=\n'"$cmdline"
     if [[ -f "$file" && "$(<"$file")" == "$want" ]]; then

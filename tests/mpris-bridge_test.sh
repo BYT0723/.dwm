@@ -170,5 +170,28 @@ assert_cond "S5: 漂移的 drop-in 被重建" 'grep -qF "%%title%%" "$OVERRIDE"'
 assert_cond "S5: 变更后 reload + restart" \
     'grep -q "daemon-reload" "$SYSTEMCTL_LOG" && grep -q "restart mpdris2-rs.service" "$SYSTEMCTL_LOG"'
 
+# ---- S6: 裸 boolean flag (--no-notification) 不错位、不产生 "" 空参数 ----
+# 回归: 旧 i+=2 固定步长把后半数组整体错位, 尾部多出 "" 导致 mpdris2-rs
+# "Unrecognized argument" 退出 1, systemd 反复重启直至 start-limit-hit
+reset_state up
+link_bridge mpdris2-rs
+reset_config
+_run_override_with_args() { # → $out 为生成的 override.conf; 参数即 MPDRIS2_NOTIFY_ARGS 内容
+    PATH="$SCEN_BIN" bash -c '
+        script="$1"; override="$2"; shift 2
+        source "$script" 2>/dev/null
+        MPDRIS2_NOTIFY_ARGS=("$@")
+        _mpris_override_action >/dev/null
+        /usr/bin/cat "$override"
+    ' _ "$MOCK_ROFI/scripts/mpd.sh" "$OVERRIDE" "$@"
+}
+out="$(_run_override_with_args --no-notification --notification-summary "%state%" --notification-summary-paused "%state%")"
+assert_cond "S6a: 前置裸 flag 原样保留" '[[ "$out" == *"--no-notification --notification-summary"* ]]'
+assert_cond "S6a: 成对 flag 未被吞成值" '[[ "$out" == *"--notification-summary \"%%state%%\""* ]]'
+assert_cond "S6a: 无尾部空参数" '[[ "$out" != *"\"\""* ]]'
+out="$(_run_override_with_args --notification-summary "%state%" --no-notification)"
+assert_cond "S6b: 后置裸 flag 原样保留" '[[ "$out" == *"\"%%state%%\" --no-notification"* ]]'
+assert_cond "S6b: 无尾部空参数" '[[ "$out" != *"\"\""* ]]'
+
 if [[ "$FAIL" -eq 0 ]]; then echo "ALL PASS"; else echo "FAILURES PRESENT"; fi
 exit "$FAIL"

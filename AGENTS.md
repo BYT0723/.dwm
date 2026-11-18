@@ -319,7 +319,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `_mpd_readpicture()` | fetch_cover (单次 readpicture 请求, nc 优先 /dev/tcp fallback) |
 | `_cover_valid()`    | fetch_cover (成功校验), mpd.sh 主流程 (cache 命中校验) — 非空 + `file` MIME `image/*`; 空/损坏文件视为无效, 失败时 `rm -f` 删除避免残留空缓存 |
 | `_ensure_mpris_bridge()` | mpd.sh 主流程 (MPD 就绪后按 `_mpris_override_action` 结果 `systemctl --user start\|restart mpdris2-rs.service` (Type=dbus 等总线名就绪, start 幂等); 未安装英文 notify 不中断; kill 侧在 `dwm-statuscmd.sh [$ST_MPD,$middle]` (`systemctl --user stop mpdris2-rs.service mpd.service`, 先桥后 MPD, 幂等)) |
-| `_mpris_override_action()` | _ensure_mpris_bridge (通知模板 `MPDRIS2_NOTIFY_ARGS` 为 repo 源 → 生成 `$XDG_CONFIG_HOME/systemd/user/mpdris2-rs.service.d/override.conf`: `ExecStart=` 重置 + 完整 argv, `%` 转义为 `%%`、真实换行转 `\n`; 内容未变输出 `start` 零写入, 变化才写 + `daemon-reload` 并输出 `restart`; 写失败按未变处理不挡菜单) |
+| `_mpris_override_action()` | _ensure_mpris_bridge (通知模板 `MPDRIS2_NOTIFY_ARGS` 为 repo 源 → 生成 `$XDG_CONFIG_HOME/systemd/user/mpdris2-rs.service.d/override.conf`: `ExecStart=` 重置 + 完整 argv, `%` 转义为 `%%`、真实换行转 `\n`; 支持裸 boolean flag (`--no-notification`/-n/-v/-V, 下一元素缺失或仍以 `-` 开头即裸发, 避免固定 `i+=2` 错位 + 尾部 `""` 致 `Unrecognized argument`); 内容未变输出 `start` 零写入, 变化才写 + `daemon-reload` 并输出 `restart`; 写失败按未变处理不挡菜单) |
 | `_have_mpris()` | _ensure_mpris_bridge, _notify_song (共用: `command -v mpdris2-rs` 检测桥是否安装) |
 | `_notify_song()` | handle_play_pause/prev/next (有桥直接返回靠 MPRIS 通知, 无桥手动 notify-send 兜底, 避免无桥时切歌静默) |
 | `_osd_running()` | _osd_on, handle_osd_lyrics (`pgrep -x osdlyrics`) |
