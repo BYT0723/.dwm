@@ -25,6 +25,26 @@ toggleApplication() {
     fi
 }
 
+# 代理守护进程: dae 优先, 否则 sing-box; 都没跑返回非 0
+proxy_daemon() {
+    if pgrep -x dae >/dev/null 2>&1; then
+        echo dae
+    elif pgrep -x sing-box >/dev/null 2>&1; then
+        echo sing-box
+    else
+        return 1
+    fi
+}
+
+# 任一代理在跑 → toggle 图标显示开启
+proxy_status() {
+    if proxy_daemon >/dev/null 2>&1; then
+        echo 1
+    else
+        echo 0
+    fi
+}
+
 # 注意: heredoc 故意不加引号 — touchpad 行的 $WORK_DIR 需在 parse 时展开,
 # 因为 toggle-raw 经 icon() 直接执行 (不像 cmd: 那样 eval, 见 util.sh raw 分支)。
 module_parse <<MODULES
@@ -39,7 +59,7 @@ calendar||Calendar|
 media-scraping|󰎁|Media Scraping|
 scrcpy|󰄟|Scrcpy (Android Mirror)|
 sddm|󰍂|SDDM|
-sing-box||sing-box (proxy)|active
+proxy|󰖟|Proxy|active-raw:proxy_status
 theme|󰔟|Theme|
 wallpaper|󰸉|Wallpaper|
 xcolor|󰌁|Color Picker|
@@ -89,7 +109,11 @@ handle_bluetooth() {
 }
 
 handle_notification() { /bin/bash $ROFI_DIR/scripts/notification.sh; }
-handle_sing_box() { /bin/bash $ROFI_DIR/scripts/sing-box.sh; }
+handle_proxy() {
+    local engine=sing-box
+    [[ "$(proxy_daemon)" == dae ]] && engine=dae
+    /bin/bash "$ROFI_DIR/scripts/$engine.sh"
+}
 handle_calendar() { /bin/bash $WORK_DIR/tools/calendar.sh; }
 handle_calendar_lunar() { /bin/bash $WORK_DIR/tools/calendar.sh lunar; }
 handle_media_scraping() { /bin/bash $ROFI_DIR/scripts/media-scraping.sh; }

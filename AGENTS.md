@@ -58,7 +58,7 @@ rofi/scripts/yt-dlp-wrapper.sh ──sources──► rofi/scripts/lib-module.sh
 
 rofi/scripts/quicklinks-mode.sh──sources──► utils/form.sh, utils/notify.sh, utils/url.sh, utils/string.sh, rofi/scripts/lib-module.sh (module_confirm, module_input); ──挂载于── rofi/launchers/type-3/launcher.sh (combi 模式 quicklinks modi)
 rofi/scripts/steam-workshop.sh──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh, utils/notify.sh, tools/steam-workshop.sh; ──calls──► sw_download (STEAM_WORKSHOP_DRIVER=auto 时有 aurelia 优先 `aurelia workshop install --no-recurse`, 失败 fallback steamcmd +login <user>/+workshop_download_item, 后台子 shell + system-notify)
-rofi/scripts/module.sh      ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh
+rofi/scripts/module.sh      ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh; ──calls──► rofi/scripts/dae.sh | rofi/scripts/sing-box.sh (Proxy 入口按 `pgrep -x dae` 分派, dae 优先)
 rofi/scripts/wallpaper.sh   ──sources──► rofi/scripts/util.sh, rofi/scripts/lib-module.sh, utils/notify.sh, tools/wallpaper-lib.sh, tools/wallpaper-render.sh
 rofi/scripts/notification.sh──sources──► rofi/scripts/util.sh, rofi/scripts/lib-module.sh
 rofi/scripts/sddm.sh       ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh
@@ -270,6 +270,9 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | 函数                      | 调用者                                                      |
 | ------------------------- | ----------------------------------------------------------- |
 | `toggleApplication()`     | module.sh (handle_picom, handle_conky)                      |
+| `proxy_daemon()`          | proxy_status, handle_proxy — dae 在跑输出 `dae`, 否则 sing-box 在跑输出 `sing-box`, 都没跑返回非 0 |
+| `proxy_status()`          | 注册表 `active-raw:proxy_status` — 任一代理在跑输出 `1` (图标点亮), 否则 `0` |
+| `handle_proxy()`          | module.sh (Proxy 菜单项 → `proxy_daemon` 选 dae.sh / sing-box.sh) |
 | `handle_audio_output()`   | module.sh (pactl sink 切换子菜单 → notify-send)             |
 | `handle_theme()`          | module.sh (Theme 子菜单 → rofi/scripts/theme.sh)            |
 | `handle_yt_dlp_wrapper()` | module.sh (YT-DLP Wrapper → rofi/scripts/yt-dlp-wrapper.sh) |
@@ -678,6 +681,7 @@ dwm-launcher.sh (快捷键)
     → rofi/scripts/steam-workshop.sh (Steam Workshop，由 module.sh handle_steam_workshop 调用)
     → rofi/scripts/wallpaper.sh (壁纸管理，由 module.sh handle_wallpaper 调用)
     → tools/touchpad.sh toggle (触控板开关，由 module.sh handle_touchpad 调用)
+    → rofi/scripts/dae.sh | rofi/scripts/sing-box.sh (Proxy 入口，由 module.sh handle_proxy 分派)
   → rofi/scripts/media-scraping.sh  (Media 启停子菜单，由 module.sh 调用)
   → rofi/scripts/screenshot.sh
   → rofi/scripts/screencast.sh
@@ -771,8 +775,9 @@ key|icon|label|status
 - **key**: kebab-case，对应 `handle_<key>` 调度函数名（`-` 转 `_`）
 - **icon**: Nerd Font 图标，始终非空（不含 sddm.sh 旧式空 icon）
 - **label**: Title Case 纯名词短语，**不带括号解释**。括号仅用于并列子实体名如 `Hub (jellyfin)`。命名实体的官方写法优先（如 `sing-box` 而非 `SingBox`）
-- **status**: `toggle` / `toggle-raw:<cmd>` / `active` / `active-svc` / `active:<svc>` / `cmd:<expr>` / `str:<text>` 或空
+- **status**: `toggle` / `toggle-raw:<cmd>` / `active` / `active-raw:<cmd>` / `active-svc` / `active:<svc>` / `cmd:<expr>` / `str:<text>` 或空
   - `toggle-raw:<cmd>` 把 `<cmd>` 的执行输出当作 toggle 图标索引（`util.sh icon() raw` 分支），适用于状态来自自定义命令的场景（如 `tools/touchpad.sh status`）
+  - `active-raw:<cmd>` 同上但用 active 图标组（非开关语义的只读状态，如 Proxy 入口由 `pgrep dae/sing-box` 判定是否在跑）
 - status 的 `cmd:` 表达式在每次 menu build 时重新 eval；需引用脚本变量或命令结果（如 `$(getConfig ...)`）时，注册表 heredoc 必须加引号（`<<'MODULES'`），否则 parse 时展开会把旧值固化进表达式（见 wallpaper.sh random_type）
 
 > **module_loop 返回约定**: ESC/取消返回 1，派发完成后固定返回 0（不受 handler 返回值影响）。需要持续交互的脚本用 `while module_loop; do :; done` 包一层（如 wallpaper.sh），单次即退的脚本直接调用。
@@ -782,7 +787,7 @@ key|icon|label|status
 ```
 picom|󰋩|Picom|toggle
 network|󰈀|Network|active:NetworkManager
-sing-box||sing-box|active
+proxy|󰖟|Proxy|active-raw:proxy_status
 calendar-lunar|󰃚|Lunar Calendar|
 ```
 
