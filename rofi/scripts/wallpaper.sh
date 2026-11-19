@@ -467,7 +467,8 @@ handle_property() {
     fi
     local dir
     dir=$(prop_wall_dir)
-    # text 全串较长, property 流程窗口加宽 (local 仅作用域内, 主菜单/其它模块保持 500)
+    # text 全串较长, property 流程窗口加宽 (local 仅作用域内, 主菜单/其它模块保持 500);
+    # 列表用 middle 省略: label 过长时保留两端, 右侧 value 不会被 rofi 默认 end 省略吃掉
     local MODULE_WIDTH=600
     local RESET_LINE="󰜉 Reset to defaults"
     while true; do
@@ -494,10 +495,12 @@ handle_property() {
             _raw_lines+=("$label"$'\t'"$pv")
             _raw_names+=("$pn")
         done <<<"$tunables"
-        # Raw tab rows -> column aligns by display width (CJK safe); value 列右对齐
+        # Raw tab rows -> column aligns labels by display width (CJK safe).
+        # value 保持左对齐紧跟 label: 右对齐会让单个长 value (如 bgimage 绝对路径)
+        # 把整列撑到窗口外, 所有行的 value 都只剩 "..."
         if ((${#_raw_lines[@]})); then
             local -a _disp_lines=()
-            mapfile -t _disp_lines < <(printf '%s\n' "${_raw_lines[@]}" | column -t -s $'\t' -R 2)
+            mapfile -t _disp_lines < <(printf '%s\n' "${_raw_lines[@]}" | column -t -s $'\t')
             local i
             for i in "${!_disp_lines[@]}"; do
                 _line_to_name["${_disp_lines[$i]}"]="${_raw_names[$i]}"
@@ -505,7 +508,7 @@ handle_property() {
             done
         fi
         menu+="$RESET_LINE"$'\n'
-        chosen=$(printf '%s' "$menu" | module_sub_rofi "Property ($MONITOR)" "Select a slider/color/file/bool/combo property")
+        chosen=$(printf '%s' "$menu" | module_sub_rofi "Property ($MONITOR)" "Select a slider/color/file/bool/combo property" middle)
         [ -z "$chosen" ] && return
         if [ "$chosen" = "$RESET_LINE" ]; then
             prop_reset

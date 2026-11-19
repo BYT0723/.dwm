@@ -113,6 +113,22 @@ assert_cond "子菜单: 外部片段在内置 listview 之后、-theme 之前" \
     "[ \"\$l_ext\" -gt \"\$l_builtin\" ] && [ \"\$l_ext\" -lt \"\$l_theme\" ]"
 unset MODULE_SUB_THEME_STR
 
+# ---- 子菜单 ellipsize 可选参数 ----
+clr
+module_sub_rofi "Sub" >/dev/null
+assert_cond "子菜单: 默认不传 -ellipsize-mode (rofi 默认 end)" \
+    "! grep -qF -- '-ellipsize-mode' \"\$ROFI_LOG\""
+
+clr
+module_sub_rofi "Sub" "" middle >/dev/null
+assert_cond "子菜单: 第三参 middle 传给 -ellipsize-mode" \
+    "grep -qxF -- '-ellipsize-mode' \"\$ROFI_LOG\" && grep -qxF 'middle' \"\$ROFI_LOG\""
+
+clr
+module_sub_rofi "Sub" "" bogus >/dev/null
+assert_cond "子菜单: 非法 ellipsize 值忽略" \
+    "! grep -qF -- '-ellipsize-mode' \"\$ROFI_LOG\""
+
 # ---- 输入框 ----
 export MODULE_INPUT_THEME_STR=('window {EXTERNAL_INPUT;}')
 clr

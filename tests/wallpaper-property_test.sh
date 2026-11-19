@@ -125,6 +125,8 @@ export YAD_OUT='120
 MONITOR="DP-1" MOCK_PICK="roleScale" handle_property
 check "D: 选中项被调节" 'grep -q "set-property roleScale=120" "$XW_MOCK_LOG"'
 check "D: 未选中项不动" '! grep -q "set-property volume=" "$XW_MOCK_LOG"'
+# label 过长时 rofi 默认 end 省略会吃掉右侧 value; 列表须用 middle 保留两端
+check "D: 选择列表启用 middle 省略" 'grep -q "Select a slider/color/file/bool/combo property middle" "$XW_MOCK_LOG"'
 
 # ---- E: 无 project.json range → fallback 0..100 ----
 reset_state
@@ -332,6 +334,20 @@ MONITOR="DP-1" MOCK_PICK="亮度 (b)" handle_property
 check "T11: 重名标签附 name" 'grep -Fq "亮度 (a)" "$TEST_DIR/rofi_in.txt" && grep -Fq "亮度 (b)" "$TEST_DIR/rofi_in.txt"'
 check "T11: 选中 b 设置 b=true" 'grep -q "set-property b=true" "$XW_MOCK_LOG"'
 check "T11: 不误改 a" '! grep -q "set-property a=" "$XW_MOCK_LOG"'
+
+# ---- T13: 单个长 value (文件绝对路径) 不把其它行的 value 推出窗口 ----
+reset_state
+printf 'bgimage\tfile\t/home/user/Pictures/a-very-long-directory-name/with-many-segments/bg.png\nvolume\tslider\t35\n' >"$XW_MOCK_STATE/props"; export XW_PROPS_RC=0
+mkdir -p "$XW_MOCK_STATE/wall"
+cat >"$XW_MOCK_STATE/wall/project.json" <<'JSON'
+{"general":{"properties":{"bgimage":{"type":"file","text":"背景图片 / Background"},"volume":{"type":"slider","value":35,"min":0,"max":100,"text":"音量 / Volume"}}}}
+JSON
+printf 'DP-1\tweb\t%s\t0\n' "$XW_MOCK_STATE/wall" >"$XW_MOCK_STATE/state"
+export YAD_OUT='40
+' YAD_RC=0
+MONITOR="DP-1" MOCK_PICK="volume" handle_property
+check "T13: 短 value 紧跟 label (未被长路径撑成右对齐)" \
+    'grep -Eq "^音量 / Volume +35$" "$TEST_DIR/rofi_in.txt"'
 
 # ---- T3b: 浮点 slider 使用 project.json 的 step ----
 reset_state

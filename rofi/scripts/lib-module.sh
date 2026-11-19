@@ -3,6 +3,7 @@
 # 依赖: util.sh (需调用方先 source)
 # 调用方需设定: MODULE_THEME ROFI_DIR
 # 可选: MODULE_WIDTH (默认 500) MODULE_FONT MODULE_COLUMN_GAP (默认 7 空格, column -t -o 列分隔)
+# module_sub_rofi 第三参可选 ellipsize 模式 (start|middle|end, 默认 end)
 # 可选数组 (外部 theme-str, 追加在内置之后覆盖 rasi):
 #   MODULE_THEME_STR   → 主菜单 (_module_rofi)
 #   MODULE_SUB_THEME_STR   → 子菜单 (module_sub_rofi)
@@ -106,6 +107,12 @@ _module_rofi() {
 }
 
 module_sub_rofi() {
+    # 第三参可选 ellipsize 模式 (start|middle|end): 长行截断时保留 value 侧
+    local ellipsize="${3:-}"
+    local ellipsize_args=()
+    case "$ellipsize" in
+    start | middle | end) ellipsize_args=(-ellipsize-mode "$ellipsize") ;;
+    esac
     local extra=()
     if [[ "${MODULE_SEARCH_BAR:-true}" == 'true' ]]; then
         extra+=(
@@ -130,6 +137,7 @@ module_sub_rofi() {
         "${extra[@]}" \
         "${font_str[@]}" \
         "${theme_str[@]}" \
+        "${ellipsize_args[@]}" \
         -dmenu -i \
         -mesg "$mesg" \
         -theme ${MODULE_THEME} \
