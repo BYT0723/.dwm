@@ -5,6 +5,7 @@ WORK_DIR="$(dirname "$ROFI_DIR")"
 MODULE_NAME=" Wallpaper"
 MODULE_THEME="$ROFI_DIR/applets/type-1/style-2.rasi"
 MODULE_MAX_LINES=8
+MODULE_COLUMN_GAP="               "
 
 source "$(dirname "$0")"/util.sh
 source "$(dirname "$0")"/lib-module.sh
