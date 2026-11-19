@@ -11,7 +11,6 @@ ROFI_DIR="$(dirname "$SELF_DIR")"
 WORK_DIR="$(dirname "$ROFI_DIR")"
 
 MODULE_THEME="$ROFI_DIR/applets/type-1/style-2.rasi"
-MODULE_WIDTH=600
 
 source "$SELF_DIR"/lib-module.sh
 source "$WORK_DIR/utils/notify.sh"
@@ -113,7 +112,7 @@ load_group_menu() { # groups_json nodes_json -> GROUP_LABELS / GROUP_IDS / GROUP
         GROUP_NAMES+=("$name")
     done < <(group_rows "$1" "$2")
     ((${#GROUP_LABELS[@]})) &&
-        mapfile -t GROUP_LABELS < <(printf '%s\n' "${GROUP_LABELS[@]}" | column -t -s $'\t' -R 3)
+        mapfile -t GROUP_LABELS < <(printf '%s\n' "${GROUP_LABELS[@]}" | column -t -o '     ' -s $'\t' -R 3)
 }
 
 load_member_menu() { # group_json -> MEMBER_LABELS / MEMBER_IDS / MEMBER_NAMES
@@ -126,7 +125,7 @@ load_member_menu() { # group_json -> MEMBER_LABELS / MEMBER_IDS / MEMBER_NAMES
         MEMBER_NAMES+=("$name")
     done < <(member_rows "$1")
     ((${#MEMBER_LABELS[@]})) &&
-        mapfile -t MEMBER_LABELS < <(printf '%s\n' "${MEMBER_LABELS[@]}" | column -t -s $'\t' -R 2)
+        mapfile -t MEMBER_LABELS < <(printf '%s\n' "${MEMBER_LABELS[@]}" | column -t -o '                    ' -s $'\t' -R 2)
 }
 
 row_index() { # needle array_name -> index
