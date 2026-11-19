@@ -2,7 +2,7 @@
 #
 # 依赖: util.sh (需调用方先 source)
 # 调用方需设定: MODULE_THEME ROFI_DIR
-# 可选: MODULE_WIDTH (默认 500) MODULE_FONT
+# 可选: MODULE_WIDTH (默认 500) MODULE_FONT MODULE_COLUMN_GAP (默认 7 空格, column -t -o 列分隔)
 # 可选数组 (外部 theme-str, 追加在内置之后覆盖 rasi):
 #   MODULE_THEME_STR   → 主菜单 (_module_rofi)
 #   MODULE_SUB_THEME_STR   → 子菜单 (module_sub_rofi)
@@ -11,6 +11,7 @@
 # 使用方法见末尾注释
 
 MODULE_WIDTH="${MODULE_WIDTH:-500}"
+MODULE_COLUMN_GAP="${MODULE_COLUMN_GAP:-       }"
 
 _module_menu_build() {
     # 新鲜度: 每构建重采进程快照 (同构建内复用, toggle 后重建正确);
@@ -38,8 +39,9 @@ _module_menu_build() {
     done
 
     # Tab-separated raw rows -> column aligns by display width (CJK/Nerd Font safe)
+    # 列间隔经 MODULE_COLUMN_GAP 覆盖 (调用方 export, 默认 7 空格)
     ((${#MAIN_OPTS[@]})) && [[ "$layout" == 'NO' ]] &&
-        mapfile -t MAIN_OPTS < <(printf '%s\n' "${MAIN_OPTS[@]}" | column -t -s $'\t')
+        mapfile -t MAIN_OPTS < <(printf '%s\n' "${MAIN_OPTS[@]}" | column -t -o "${MODULE_COLUMN_GAP:-       }" -s $'\t')
 
     local count=${#MODULE_KEYS[@]}
     [ "$_module_col" = "1" ] && _module_row=${MODULE_MAX_LINES:-$count} || _module_col=$count

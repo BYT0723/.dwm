@@ -143,6 +143,39 @@ assert_cond "隔离: 主菜单不响应 MODULE_SUB_THEME_STR" \
     "! grep -qF 'SHOULD_NOT_LEAK' \"\$ROFI_LOG\""
 unset MODULE_SUB_THEME_STR
 
+# ---- MODULE_COLUMN_GAP: 列间隔可配置 (默认 7 空格) ----
+COL_THEME="$TEST_DIR/col.rasi"
+printf 'USE_ICON=NO\n' >"$COL_THEME"
+_saved_theme="$MODULE_THEME"
+export MODULE_THEME="$COL_THEME"
+module_parse <<'MODULES'
+a|IA|Alpha|str:X
+bb|IBB|BetaLong|str:YY
+MODULES
+_module_col=1
+unset MODULE_COLUMN_GAP || true
+_module_menu_build
+_gap_default0="${MAIN_OPTS[0]}"
+_gap_default1="${MAIN_OPTS[1]}"
+assert_cond "列间隔: 默认含 7 空格分隔" \
+    "[[ \"\$_gap_default0\" == *'       '* ]]"
+export MODULE_COLUMN_GAP='  '
+_module_menu_build
+_gap_custom0="${MAIN_OPTS[0]}"
+_gap_custom1="${MAIN_OPTS[1]}"
+assert_cond "列间隔: 自定义 2 空格生效 (与默认不同且窄 5 列)" \
+    "[[ \"\$_gap_custom0\" != \"\$_gap_default0\" ]] && [ \$(( \${#_gap_default0} - \${#_gap_custom0} )) = 5 ] && [ \$(( \${#_gap_default1} - \${#_gap_custom1} )) = 5 ]"
+export MODULE_COLUMN_GAP=''
+_module_menu_build
+assert_cond "列间隔: 空串回退默认 7 空格" \
+    "[[ \"\${MAIN_OPTS[0]}\" == \"\$_gap_default0\" ]]"
+unset MODULE_COLUMN_GAP || true
+_module_menu_build
+assert_cond "列间隔: unset 回退默认 7 空格" \
+    "[[ \"\${MAIN_OPTS[0]}\" == \"\$_gap_default0\" ]]"
+export MODULE_THEME="$_saved_theme"
+unset MODULE_COLUMN_GAP || true
+
 if ((FAIL)); then
     echo "== 有失败用例 =="
     exit 1

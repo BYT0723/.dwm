@@ -68,7 +68,7 @@ handle_monitor_brightness() {
         done < <(
             xrandr --listactivemonitors 2>/dev/null |
                 awk 'NR > 1 {print $NF}'
-        ) | column -t -s $'\t' -R 2 | module_sub_rofi "󰃠 Monitor Brightness" "Control brightness of monitors")
+        ) | column -t -o '                           ' -s $'\t' -R 2 | module_sub_rofi "󰃠 Monitor Brightness" "Control brightness of monitors")
         [ -z "$chosen" ] && break
 
         read -r _ monitor brightness <<<"$chosen"
