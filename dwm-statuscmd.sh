@@ -188,7 +188,7 @@ declare -A actions=(
     [$ST_MAIL,$right]=_mail_aerc
     [$ST_RSS,$left]=_rss_notify
     [$ST_RSS,$right]=_rss_launch
-    [$ST_PROXY,$left]='(pgrep -x sing-box && "$ROFI_SCRIPT_DIR/sing-box.sh")'
+    [$ST_PROXY,$left]='(pgrep -x dae && "$ROFI_SCRIPT_DIR/dae.sh")'
     [$ST_PROXY,$right]='(pgrep -x sing-box && xdg-open "http://127.0.0.1:9090/ui")'
     [$ST_NOTIFY,$left]='(n=$(dunstctl count history); while ((n-- > 0)); do dunstctl history-pop; done)'
     [$ST_NOTIFY,$right]='"$ROFI_SCRIPT_DIR/notification.sh"'

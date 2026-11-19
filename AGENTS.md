@@ -66,6 +66,7 @@ rofi/scripts/screencast.sh  ──sources──► rofi/scripts/lib-module.sh, r
 rofi/scripts/media-scraping.sh──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh, utils/notify.sh; ──manages──► docker.service (+ docker.socket) 生命周期 (Toggle 时自启/空闲自停)
 rofi/scripts/mpd.sh         ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh; ──requires─► MPD `readpicture` 协议 (nc / bash /dev/tcp, 环境变量 MPD_HOST/MPD_PORT 默认 localhost:6600), osdlyrics + busctl + setsid + pgrep (OSD 歌词开关: `org.osdlyrics.Config` 的 `General/display-mode-osd`); 封面缓存 `~/.cache/dwm/mpd-cover/mpd-cover-<uri-hash>.jpg` (按歌曲 uri cksum 绑定, 命中复用); ──generates──► `~/.config/systemd/user/mpdris2-rs.service.d/override.conf` (通知模板, 内容变了才 daemon-reload + restart)
 rofi/scripts/sing-box.sh    ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh, utils/notify.sh
+rofi/scripts/dae.sh        ──sources──► rofi/scripts/lib-module.sh, utils/notify.sh; ──requires─► curl, jq, column (util-linux, 菜单列对齐); ──uses──► dae native API (默认 127.0.0.1:9527, /etc/dae/config.dae 的 api{} 必须 enabled)
 rofi/scripts/scrcpy.sh    ──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh, utils/notify.sh
 rofi/scripts/theme.sh──sources──► rofi/scripts/lib-module.sh, rofi/scripts/util.sh, tools/theme.sh
 rofi/scripts/dunst-menu.sh──sources──► 无外部脚本 (dunst 的 dmenu 实现: stdin action/URL 行 → rofi applets/type-2/style-2 → stdout 原始行, `-format i` 序号回映射); ──invoked by── dunst (dunstrc `dmenu = ~/.dwm/rofi/scripts/dunst-menu.sh`)
@@ -102,7 +103,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 ### utils/notify.sh → system-notify()
 
 被以下脚本调用:
-`brightness.sh` `calendar.sh` `keyboard.sh` `lock.sh` `volume.sh` `dwm-status-tools.sh` `dwm-statuscmd.sh` `sing-box.sh` `wallpaper.sh` `tools/theme.sh` `yt-dlp-wrapper.sh` `scrcpy.sh` (tool-notify)
+`brightness.sh` `calendar.sh` `keyboard.sh` `lock.sh` `volume.sh` `dwm-status-tools.sh` `dwm-statuscmd.sh` `sing-box.sh` `dae.sh` `wallpaper.sh` `tools/theme.sh` `yt-dlp-wrapper.sh` `scrcpy.sh` (tool-notify)
 
 ### utils/monitor.sh
 
@@ -300,6 +301,28 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 > 静默退出 0。主题 `applets/type-2/style-2.rasi`, 运行时 theme-str 覆盖为
 > 窗口 800px / `element{padding:20px 5px}` / `element-text{JetBrains Mono 12}`
 > / inputbar 只留 `textbox-prompt-colon` (隐藏 entry)。回归测试 `tests/dunst-menu_test.sh`。
+
+### rofi/scripts/dae.sh (顶层 `main()` + `DAE_NO_DISPATCH=1` 测试缝)
+
+| 函数 | 调用者 |
+| ---- | ------ |
+| `api_call()` | 全部 API 操作 — `curl -X <method> -H Accept[: Bearer] [-d json] -w '\n%{http_code}'`; 2xx 时把 body 写全局 `BODY`, 非 2xx/连不上写 `API_ERR`(优先 `.error.message`) 并返回 1 |
+| `group_rows()` | main_menu 经 load_group_menu (原始 tab 行: `name \t id \t policy.native \t 延迟`; 延迟取 tcp 当前成员的 `sorting_latency_ms → moving_avg_ms → latency_ms`, 缺失 `-`; **不输出当前节点名**, 节点多时长度不可控) |
+| `member_rows()` | group_menu 经 load_member_menu (原始 tab 行: `[✓\|~\|空格]名称 \t id \t 名称 \t 延迟`; `✓`=tcp 当前, `~`=仅 udp 当前, state=unavailable 显 `✗`; `can_override` 且当前 source=override 时首行 `↺ Auto \t __auto__ \t Auto \t -`) |
+| `load_group_menu()` | main_menu (raw 行 → `GROUP_LABELS/GROUP_IDS/GROUP_NAMES`; 经 `column -t -s $'\t' -R 3` 按显示宽度对齐, 末列延迟右对齐) |
+| `load_member_menu()` | group_menu (raw 行 → `MEMBER_LABELS/MEMBER_IDS/MEMBER_NAMES`; `column -t -s $'\t' -R 2`) |
+| `row_index()` | main_menu, group_menu (选中显示行 → 数组下标; 之后按 id 派发, 不再解析行文本) |
+| `switch_node()` | group_menu — `PUT /groups/{id}/selection` body `{member_id, network:"both"}` (对 urltest 组是内存 pin) |
+| `clear_pin()` | group_menu (Auto 行) — `DELETE /groups/{id}/selection?network=both`, 回到策略自动选择 |
+| `toggle_suspend()` | main_menu (Suspend/Resume 行) — 按 `lifecycle.state` 选 `POST /operations/{suspend\|resume}`, 取 `operation_id` 后轮询 `/operations/{id}` (≤2s) 到 succeeded/failed 再通知 |
+| `group_menu()` | main_menu (选中组; 加载成员行并按下标映射成员 id; `fixed` 组直接通知不支持; Auto 行清 pin; 切换成功 `system-notify low`) |
+| `main_menu()` | main — 每轮重取 runtime/groups/nodes 构建 "所有组 + Suspend/Resume" 列表 (按下标映射组 id); ESC 退出, 动作后原地刷新 |
+| `main()` | 顶层 (`DAE_NO_DISPATCH=1` 时跳过以便测试 source) — 依赖 jq + `pgrep -x dae`, 先用 `GET /groups` 探活, 失败提示检查 `api{}`; / tests/dae_test.sh |
+
+> dae 没有 Clash API, 组/节点选择走 native API; API 默认关闭, 需在 `/etc/dae/config.dae` 加
+> `api { enabled: true; listen: '127.0.0.1:9527' }` (匿名回环或 secret) 并 `systemctl reload dae`。
+> 选择是**内存 pin** (`source: override`), `reload`/重启后回到配置的策略 (当前 `min_moving_avg`);
+> 菜单的 Suspend/Resume 走 API, 不需要 root (CLI `dae reload/suspend` 需要 sudo)。
 
 ### rofi/scripts/media-scraping.sh (顶层 `while module_loop` + `MEDIA_SCRAPING_NO_DISPATCH=1` 测试缝)
 
@@ -625,7 +648,8 @@ dwm-status.sh
   → xsetroot -name "$status"
 
 dwm-statuscmd.sh (状态栏点击)
-  → volume.sh / brightness.sh / calendar.sh / mpd.sh / sing-box.sh / notification.sh / ... (按模块)
+  → volume.sh / brightness.sh / calendar.sh / mpd.sh / dae.sh / notification.sh / ... (按模块)
+    └─ ST_PROXY 左键: pgrep -x dae && rofi/scripts/dae.sh (只认 dae; 右键保持 sing-box Clash UI 未改)
 ```
 
 ### rofi 启动器链路
@@ -827,6 +851,15 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **rofi script mode 多属性必须用 `\x1f` 连接**：正确格式 `text\0icon\x1f<v>\x1finfo\x1f<id>`（仅行文本后一个 `\0`）。曾错误写成 `text\0icon\x1f<v>\0info\x1f<id>`（两个 `\0`）导致选中无反应：rofi 按 C 字符串语义解析属性块（`dmenuscript_parse_entry_extras` 的 `g_strsplit` 遇 `\0` 截断），第二个 `\0` 之后的内容（含 info）不可见 → `ROFI_INFO` 不设置 → 静默返回。测试断言注意：`grep -a` 对含 NUL 文件匹配不可靠、`$'\x00'` bash 展开的字面 NUL 会截断 grep -P 模式，须用单引号模式 `'\x00info'` + `grep -P`
 - **Media Scraping Toggle 不管 daemon 已修复 (两处失效)**: ① daemon 没起时 `docker compose up` 直接失败, 菜单看起来"点了没反应"; ② 关完最后一个容器后 daemon 继续常驻。现 Toggle 联动 `docker.service`: up 分支未运行则先 `systemctl start`, down 分支全局无活动容器则停 socket。**`docker.socket` 是 `ListenStream=/run/docker.sock` + `Triggers=docker.service`**, 只停 service 时本脚本菜单构建里的 `docker compose ps` (`_is_running` 每个 Toggle 行一次, 一轮最多 10 次) 会经 socket 把 daemon 立刻拉起来等于没停 → 停 socket 才是收尾动作。`_is_running` 先过 `_docker_service_active` 门禁 (daemon 停着直接 rc=1 不 spawn docker)。停止口径是**全局** `docker ps -q` 为 0 (其他 compose 项目还有容器在跑就不停 daemon)。回归测试 `tests/media-scraping-docker_test.sh` (A-G/S 组)
 - **`systemctl` 一条只能带一个 unit (多 unit 被 polkit 直接拒)**: 首版 down 分支写成 `systemctl stop docker.service docker.socket`, 实机表现为 Toggle 关服务后收到 critical "停止失败" 且**没有任何 polkit 窗口**。实测: 多 unit 调用 `rc=4 Failed to enqueue jobs: Access denied`、0-7ms 返回、journal 里连 `polkit-agent-helper-1` 都不 spawn (不是"弹窗超时", 是 polkit 在 challenge 之前就回绝); 与 docker 无关 (`systemctl start getty@tty9 getty@tty11` 同样被拒), 同一上下文里单 unit 调用正常走 agent (`polkit-agent-helper-1` + pam 认证, 2-11s)。修法: 一条 `systemctl` 只带一个 unit; 停 socket `systemctl stop docker.socket` 单条即连带停 service (`Requires=docker.socket`, 实测两者一起 inactive), 反过来 `stop docker.service` 会警告 `Stopping 'docker.service', but its triggering units are still active: docker.socket`; 另加兜底 `_docker_service_active && systemctl stop docker.service`。同时 `2>/dev/null` 会把唯一线索吞掉, 现改为 `err=$(...)` 把 stderr 带进通知。回归测试 D2/D3/D5/D7/F2/F3/S5 (变异: 改回多 unit → D2/D3/S5 FAIL; 删兜底 → D7 FAIL; 吞 stderr → F3 FAIL)
+
+### dae（rofi/scripts/dae.sh）
+
+- **dae 没有 Clash API, 不能照搬 sing-box.sh 的 `/proxies`**: 2.1.x 自带 native HTTP API (`/api/v1/groups`、`PUT /groups/{id}/selection`、`POST /operations/{suspend,resume}`), 但**默认关闭**。需 `/etc/dae/config.dae` 加 `api { enabled: true; listen: '127.0.0.1:9527' }` + 鉴权 (`allow_anonymous_loopback: true` 或 `secret`), 再 `systemctl reload dae`。脚本用 `GET /groups` 探活, 失败提示检查 `api{}`。
+- **节点切换是内存 pin, reload/重启即失效**: `PUT selection {member_id, network:"both"}` 对 `min*` 组返回 `source: "override"`, 覆盖策略但不写回配置; `dae reload` 或重启回到 `min_moving_avg`。因此菜单**不做 Reload** (切换不需要, reload 反而清 pin); 需要持久化就改配置的 `policy: select(n)`。`fixed(N)` 组 API 返回 422, 菜单直接提示不支持。
+- **pin 忽略健康检查**: 固定到已失效节点不会自动切回 (API 语义与 selector 相同), 菜单 `Auto` 行 (`DELETE .../selection?network=both`) 用于清除 pin; 当前 API 的 `can_override` 与 `source=override` 共同决定是否显示该行。
+- **CLI `dae reload/suspend` 需要 root** (实测直接弹 sudo); 菜单的 Suspend/Resume 走 `POST /operations/*` + `GET /operations/{id}` 轮询, 无需 sudo。API 操作是异步 202, 失败原因取 `.error.message`。
+- **主菜单组行不显示当前节点**: 只留 `组名 / policy / 延迟`; 节点多时 `成员 / 成员` 会把行拉长且长度不可控, 当前选中节点改在进入组后的成员子菜单看 (`✓`/`~`)。回归测试 `tests/dae_test.sh` A3b。
+- **ST_PROXY 左键只认 dae**: 原先 `(pgrep -x sing-box && sing-box.sh)` 改为 `(pgrep -x dae && dae.sh)`, 不回落 sing-box; 右键 (sing-box Clash UI 9090) 按用户要求暂不改。`print_proxy` 本就同时认 `sing-box`/`dae`, 未改。回归测试 `tests/dae_test.sh` (组行/成员标记/Auto/PUT/DELETE/suspend-resume/API 错误/静态接线)。
 
 ### Steam Workshop
 
