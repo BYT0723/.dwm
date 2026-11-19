@@ -39,6 +39,17 @@ _host_from_url() {
     [[ "$_HOST" == www.* ]] && _HOST="${_HOST#www.}"
 }
 
+# Pango markup 转义 (& 必须最先): footer 开启 markup-rows 后行文本按 markup 解析,
+# 用户数据里的 &/<> 会让 pango_parse_markup 失败 → 该行被 rofi 过滤逻辑整行丢弃
+# 结果写 $_MARKUP 全局变量 (与 _host_from_url 同风格, 避免 $() fork)
+_markup_escape() {
+    _MARKUP=$1
+    # 替换串里的 & 是"匹配文本"的特殊写法, 字面 & 须转义为 \&
+    _MARKUP=${_MARKUP//&/\&amp;}
+    _MARKUP=${_MARKUP//</\&lt;}
+    _MARKUP=${_MARKUP//>/\&gt;}
+}
+
 # curl 下载到文件并校验 MIME 为 image/* (失败返回 1)
 _dl_icon() { # $1=url $2=输出文件
     curl -fsSL \
@@ -323,17 +334,20 @@ _print_browser_rows() {
     shift
     for row in "$@"; do
         IFS=$'\x1f' read -r title url host <<<"$row"
+        _markup_escape "$title"
         if [[ -f "$ICON_CACHE_DIR/$host.png" ]]; then
-            printf '%s — %s\0icon\x1f%s\x1finfo\x1f%s%s\n' "$title" "$host" "$ICON_CACHE_DIR/$host.png" "$ns" "$url"
+            printf '%s — %s\0icon\x1f%s\x1finfo\x1f%s%s\n' "$_MARKUP" "$host" "$ICON_CACHE_DIR/$host.png" "$ns" "$url"
         else
-            printf '%s — %s\0info\x1f%s%s\n' "$title" "$host" "$ns" "$url"
+            printf '%s — %s\0info\x1f%s%s\n' "$_MARKUP" "$host" "$ns" "$url"
         fi
     done
 }
 
 # 列表尾部 header: data 标记当前层级 (main/hist/bm, 经 ROFI_DATA 回传) + 快捷键开关
+# markup-rows: searcher 行 name 用 Pango 弱化显示, 行文本已按 _markup_escape 转义
 _list_footer() { # $1=data 标记
     printf '\0data\x1f%s\n' "$1"
+    printf '\0markup-rows\x1ftrue\n'
     printf '\0use-hot-keys\x1ftrue\n'
 }
 
@@ -349,14 +363,15 @@ _list() {
     local entry name id url host
     for entry in "${_links[@]}"; do
         IFS=$'\x1f' read -r name id url host <<<"$entry"
+        _markup_escape "$name"
         # hit 判定内联 (避免 $() 命令替换 fork; fail/miss 输出相同, 无需三态)
         if [[ -f "$ICON_CACHE_DIR/$host.png" ]]; then
             # 多属性必须用 \x1f 连接 (仅行文本后一个 \0): rofi 按 C 字符串解析属性块,
             # 第二个 \0 会把 info 截断在字符串外 → ROFI_INFO 丢失, 选中无反应
-            printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$name" "$ICON_CACHE_DIR/$host.png" "$id"
+            printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$_MARKUP" "$ICON_CACHE_DIR/$host.png" "$id"
         else
             # miss/fail fallback: 无图标纯文本行
-            printf '%s\0info\x1f%s\n' "$name" "$id"
+            printf '%s\0info\x1f%s\n' "$_MARKUP" "$id"
         fi
     done
     printf '%s\0info\x1fnew\n' "$NEW_LINK"
@@ -365,14 +380,19 @@ _list() {
     printf '%s\0info\x1fbrowse-hist\n' "$BROWSE_HIST"
     printf '%s\0info\x1fbrowse-bm\n' "$BROWSE_BM"
     # @ 引擎: 输入 @ 时 rofi 过滤仅剩 @key 行 (links/New/浏览入口均不含 @) → 展示可用 searcher;
-    # 可选中 (info=searcher|<key>), 显示 "@key (name)"; 老数据缺 key 时回退 key=name
-    local skey sname surl
+    # 可选中 (info=searcher|<key>), 显示 "@key [(name)]" (name 弱化, 与 launcher 的
+    # drun-display-format "{name} [(generic)]" 同款); 老数据缺 key 时回退 key=name
+    local skey sname surl dim
     while IFS=$'\t' read -r skey sname surl; do
         _host_from_url "$surl"
+        _markup_escape "$sname"
+        dim="[<span weight='light' size='small'><i>($_MARKUP)</i></span>]"
+        _markup_escape "$skey"
+        skey=$_MARKUP
         if [[ -f "$ICON_CACHE_DIR/$_HOST.png" ]]; then
-            printf '@%s (%s)\0icon\x1f%s\x1finfo\x1fsearcher|%s\n' "$skey" "$sname" "$ICON_CACHE_DIR/$_HOST.png" "$skey"
+            printf '@%s %s\0icon\x1f%s\x1finfo\x1fsearcher|%s\n' "$skey" "$dim" "$ICON_CACHE_DIR/$_HOST.png" "$skey"
         else
-            printf '@%s (%s)\0info\x1fsearcher|%s\n' "$skey" "$sname" "$skey"
+            printf '@%s %s\0info\x1fsearcher|%s\n' "$skey" "$dim" "$skey"
         fi
     done < <(jq -r '.searcher[]? | [(.key // .name), .name, .url] | @tsv' "$CONFIG" 2>/dev/null)
     _list_footer main

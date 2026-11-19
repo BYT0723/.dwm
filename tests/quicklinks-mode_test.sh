@@ -32,6 +32,14 @@ assert_file_has() { # file content msg
         FAIL=1
     fi
 }
+assert_file_has_lit() { # file content msg (字面匹配: markup 期望值含 [ ] 等正则元字符)
+    if grep -aqFe "$2" "$1"; then
+        echo "ok: $3"
+    else
+        echo "FAIL: $3 (file 不含字面量 $2)"
+        FAIL=1
+    fi
+}
 
 # ---- source ----
 source "$SCRIPT"
@@ -198,7 +206,7 @@ chmod +x "$FAKE_BIN/xdg-open" "$FAKE_BIN/yad" "$FAKE_BIN/rofi" "$FAKE_BIN/notify
 
 # ---- Task 2: 列表输出 (主菜单: links + New + 浏览入口, @/^/* 明细下沉子菜单) ----
 _list >"$TEST_DIR/list.out"
-printf 'GitHub\0info\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list.expected"
+printf 'GitHub\0info\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list.expected"
 if cmp -s "$TEST_DIR/list.out" "$TEST_DIR/list.expected"; then
     echo "ok: _list 输出 (含 info 元数据, New 行底部, use-hot-keys)"
 else
@@ -211,7 +219,7 @@ else
 fi
 
 # ---- Task 2b: @ 引擎 searcher 行 (searcher 不隔离, 保留主菜单) ----
-# 输入 @ 时 rofi 过滤仅剩 @key 行 → 展示可用引擎; 显示 @key (name), 可选中 (info=searcher|<key>), Enter 搜索 / Alt+1 编辑 / Alt+2 删除
+# 输入 @ 时 rofi 过滤仅剩 @key 行 → 展示可用引擎; 显示 @key [(name)] (name 弱化), 可选中 (info=searcher|<key>), Enter 搜索 / Alt+1 编辑 / Alt+2 删除
 cat >"$CONFIG" <<'JSON'
 {"searcher":[
   {"key":"g","name":"Google","url":"https://www.google.com/search?q={key}"},
@@ -219,9 +227,9 @@ cat >"$CONFIG" <<'JSON'
 ],"links":[]}
 JSON
 _list >"$TEST_DIR/list-searcher.out"
-printf '%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n@g (Google)\0info\x1fsearcher|g\n@b (Bing Search)\0info\x1fsearcher|b\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-searcher.expected"
+printf '%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n@g [<span weight='\''light'\'' size='\''small'\''><i>(Google)</i></span>]\0info\x1fsearcher|g\n@b [<span weight='\''light'\'' size='\''small'\''><i>(Bing Search)</i></span>]\0info\x1fsearcher|b\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-searcher.expected"
 if cmp -s "$TEST_DIR/list-searcher.out" "$TEST_DIR/list-searcher.expected"; then
-    echo "ok: _list 含 searcher → @key (name) 可选中行 + info=searcher|<key> (+历史/书签浏览入口)"
+    echo "ok: _list 含 searcher → @key [(name)] 可选中行 + info=searcher|<key> (+历史/书签浏览入口)"
 else
     echo "FAIL: _list searcher 提示行"
     echo "--- got ---"
@@ -236,9 +244,9 @@ wait
 rm -rf "$ICON_CACHE_DIR" && mkdir -p "$ICON_CACHE_DIR"
 : >"$ICON_CACHE_DIR/google.com.png"
 _list >"$TEST_DIR/list-searcher-icon.out"
-printf '%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n@g (Google)\0icon\x1f%s\x1finfo\x1fsearcher|g\n@b (Bing Search)\0info\x1fsearcher|b\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" "$ICON_CACHE_DIR/google.com.png" >"$TEST_DIR/list-searcher-icon.expected"
+printf '%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n@g [<span weight='\''light'\'' size='\''small'\''><i>(Google)</i></span>]\0icon\x1f%s\x1finfo\x1fsearcher|g\n@b [<span weight='\''light'\'' size='\''small'\''><i>(Bing Search)</i></span>]\0info\x1fsearcher|b\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" "$ICON_CACHE_DIR/google.com.png" >"$TEST_DIR/list-searcher-icon.expected"
 if cmp -s "$TEST_DIR/list-searcher-icon.out" "$TEST_DIR/list-searcher-icon.expected"; then
-    echo "ok: _list searcher icon hit → @key (name) + \\x1f 连接 icon 属性"
+    echo "ok: _list searcher icon hit → @key [(name)] + \\x1f 连接 icon 属性"
 else
     echo "FAIL: _list searcher icon 展示"
     echo "--- got ---"
@@ -272,7 +280,7 @@ wait
 rm -rf "$ICON_CACHE_DIR" && mkdir -p "$ICON_CACHE_DIR"
 : >"$ICON_CACHE_DIR/github.com.png"
 _list >"$TEST_DIR/list-hit.out"
-printf 'GitHub\0icon\x1f%s\x1finfo\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$ICON_CACHE_DIR/github.com.png" "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-hit.expected"
+printf 'GitHub\0icon\x1f%s\x1finfo\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$ICON_CACHE_DIR/github.com.png" "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-hit.expected"
 if cmp -s "$TEST_DIR/list-hit.out" "$TEST_DIR/list-hit.expected"; then
     echo "ok: _list hit → 图片属性, 行文本无字符 icon"
 else
@@ -293,7 +301,7 @@ wait
 rm -rf "$ICON_CACHE_DIR" && mkdir -p "$ICON_CACHE_DIR"
 : >"$ICON_CACHE_DIR/github.com.png.fail"
 _list >"$TEST_DIR/list-fail.out"
-printf 'GitHub\0info\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-fail.expected"
+printf 'GitHub\0info\x1fid-1\nExample\0info\x1fid-2\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-fail.expected"
 if cmp -s "$TEST_DIR/list-fail.out" "$TEST_DIR/list-fail.expected"; then
     echo "ok: _list fail → fallback 原样输出"
 else
@@ -314,7 +322,7 @@ cat >"$CONFIG" <<'JSON'
 ]}
 JSON
 _list >"$TEST_DIR/list-pipe.out"
-printf 'A|B\0info\x1fid-pipe\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-pipe.expected"
+printf 'A|B\0info\x1fid-pipe\n%s\0info\x1fnew\n%s\0info\x1fnew-searcher\n%s\0info\x1fbrowse-hist\n%s\0info\x1fbrowse-bm\n\0data\x1fmain\n\0markup-rows\x1ftrue\n\0use-hot-keys\x1ftrue\n' "$NEW_LINK" "$NEW_SEARCHER" "$BROWSE_HIST" "$BROWSE_BM" >"$TEST_DIR/list-pipe.expected"
 if cmp -s "$TEST_DIR/list-pipe.out" "$TEST_DIR/list-pipe.expected"; then
     echo "ok: 分隔符: name/url 含 | 不破坏解析"
 else
@@ -652,14 +660,14 @@ unset MOCK_ROFI_OUTPUT
 assert_eq "$(jq -r '.searcher | length' "$CONFIG")" "0" "searcher 删除: 确认 Yes 删除"
 assert_eq "$(jq -r '.links | length' "$CONFIG")" "1" "searcher 删除: links 不变"
 
-# 老数据无 key: 显示回退 @name (name), Enter 照常可用
+# 老数据无 key: 显示回退 @name [(name)], Enter 照常可用
 cat >"$CONFIG" <<'JSON'
 {"links":[],"searcher":[
   {"name":"google","url":"https://www.google.com/search?q={key}"}
 ]}
 JSON
 _list >"$TEST_DIR/list-nokey.out"
-assert_file_has "$TEST_DIR/list-nokey.out" "@google (google)" "searcher 兼容: 无 key 显示 @name (name)"
+assert_file_has_lit "$TEST_DIR/list-nokey.out" "@google [<span weight='light' size='small'><i>(google)</i></span>]" "searcher 兼容: 无 key 显示 @name [(name)] 弱化"
 assert_file_has "$TEST_DIR/list-nokey.out" "info.searcher|google" "searcher 兼容: 无 key 时 info 回退 key=name"
 rm -f "$XDG_FAKE_LOG"
 ROFI_RETV=2 _main "@google hello"
@@ -783,6 +791,20 @@ if grep -aqe 'info.hist|' "$TEST_DIR/list-browser.out" || grep -aqe 'info.bm|' "
 else
     echo "ok: _list 主菜单无 hist|/bm| 明细行 (隔离)"
 fi
+
+# markup-rows: 行文本按 Pango markup 解析, 用户数据 &/<> 须转义 (否则 pango 解析失败 → 整行被过滤丢弃)
+printf '{"links":[{"name":"A&B <x>","url":"https://esc.test","id":"id-esc"}],"searcher":[{"key":"e","name":"E&T <q>","url":"https://esc.test/s?q={key}"}]}' >"$CONFIG"
+_list >"$TEST_DIR/list-markup.out"
+assert_file_has_lit "$TEST_DIR/list-markup.out" "A&amp;B &lt;x&gt;" "_list: link name 转义 &/<> (markup-rows 安全)"
+assert_file_has_lit "$TEST_DIR/list-markup.out" "<i>(E&amp;T &lt;q&gt;)</i>" "_list: searcher name 转义后包在弱化标签内"
+if grep -qaP '\x00markup-rows\x1ftrue' "$TEST_DIR/list-markup.out"; then
+    echo "ok: _list footer 开启 markup-rows"
+else
+    echo "FAIL: _list footer 缺 markup-rows"
+    FAIL=1
+fi
+printf '{"links":[],"searcher":[{"name":"g","url":"https://g.test/s?q={key}"}]}' >"$CONFIG"
+
 # 下钻: ROFI_INFO=browse-hist → 仅历史行 + back 首行 + data hist (rofi 收到输出原地刷新不退出)
 ROFI_INFO='browse-hist' ROFI_RETV=1 _main >"$TEST_DIR/list-hist-sub.out"
 assert_file_has "$TEST_DIR/list-hist-sub.out" "info.hist|https://example.com/high" "下钻 hist: 历史行 info=hist|url"
