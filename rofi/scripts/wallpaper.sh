@@ -233,8 +233,9 @@ select_marker_wallpaper() {
     # Alt+1/2 执行后循环重显继续挑；Alt+3 删完回模块菜单 (menu/map 是快照, 删后已过期)；
     # Enter 应用后退出；ESC 直接返回。
     while true; do
-        sel=$(rofi -dmenu -i -p "$label (Alt+1 open · Alt+2 copy · Alt+3 del)" -format i -no-custom -show-icons \
+        sel=$(rofi -dmenu -i -ellipsize-mode middle -p "$label (Alt+1 open · Alt+2 copy · Alt+3 del)" -format i -no-custom -show-icons \
             -theme "$ROFI_DIR/launchers/type-3/style-6.rasi" \
+            -theme-str '* {font: "Noto Sans CJK SC 10"; }' \
             -theme-str 'listview {columns: 4; lines: 4; flow: horizontal; }' \
             -theme-str 'window {width: 800px;}' \
             -hover-select -me-select-entry '' -me-accept-entry '' -me-accept-custom MousePrimary <"$menu_nul" 2>/dev/null)
