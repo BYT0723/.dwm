@@ -380,13 +380,13 @@ _list() {
     printf '%s\0info\x1fbrowse-hist\n' "$BROWSE_HIST"
     printf '%s\0info\x1fbrowse-bm\n' "$BROWSE_BM"
     # @ 引擎: 输入 @ 时 rofi 过滤仅剩 @key 行 (links/New/浏览入口均不含 @) → 展示可用 searcher;
-    # 可选中 (info=searcher|<key>), 显示 "@key [(name)]" (name 弱化, 与 launcher 的
-    # drun-display-format "{name} [(generic)]" 同款); 老数据缺 key 时回退 key=name
+    # 可选中 (info=searcher|<key>), 显示 "@key (name)" (name 弱化, 取 launcher 的
+    # drun-display-format 的 span 部分, 不加方括号); 老数据缺 key 时回退 key=name
     local skey sname surl dim
     while IFS=$'\t' read -r skey sname surl; do
         _host_from_url "$surl"
         _markup_escape "$sname"
-        dim="[<span weight='light' size='small'><i>($_MARKUP)</i></span>]"
+        dim="<span weight='light' size='small'><i>($_MARKUP)</i></span>"
         _markup_escape "$skey"
         skey=$_MARKUP
         if [[ -f "$ICON_CACHE_DIR/$_HOST.png" ]]; then
