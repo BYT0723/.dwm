@@ -66,6 +66,7 @@ mpd_status_path="$cache_dir/mpd-status"
 docker_count_path="$cache_dir/docker-count"
 docker_list_path="$cache_dir/docker-list"
 docker_disk_path="$cache_dir/docker-disk"
+proxy_state_path="$cache_dir/proxy-state"
 
 mail_account_config=$HOME/.config/dwm/mail.json
 
@@ -304,6 +305,35 @@ update_docker_daemon() {
             rm -f "$docker_count_path" "$docker_list_path" "$docker_disk_path"
         fi
         ((n++))
+        sleep "$interval"
+    done
+}
+
+# 代理运行态: dae 支持 suspend (进程在但不代理), sing-box 只有进程存续。
+# dae 状态源为 native API lifecycle.state; 2s 轮询写 proxy-state (key=value),
+# panes() 只读缓存, 不做网络请求。API 不可达但进程存在时写 unknown (旧图标行为)。
+update_proxy_status_daemon() {
+    local interval=${1:-2}
+    local api=${DAE_API:-http://127.0.0.1:9527}
+    local secret=${DAE_API_SECRET:-}
+    local state tmp="$proxy_state_path.tmp"
+    local -a args=(-s -m 2 -H "Accept: application/json")
+    [[ -n "$secret" ]] && args+=(-H "Authorization: Bearer $secret")
+    api=${api%/}
+
+    while true; do
+        : >"$tmp" 2>/dev/null
+        if pgrep -x dae >/dev/null 2>&1; then
+            state=$(curl "${args[@]}" "$api/api/v1/runtime" 2>/dev/null |
+                jq -r '.lifecycle.state // empty' 2>/dev/null)
+            case "$state" in
+            running | suspended) ;;
+            *) state=unknown ;;
+            esac
+            printf 'dae=%s\n' "$state" >>"$tmp"
+        fi
+        pgrep -x sing-box >/dev/null 2>&1 && printf 'sing-box=running\n' >>"$tmp"
+        mv -f "$tmp" "$proxy_state_path" 2>/dev/null
         sleep "$interval"
     done
 }

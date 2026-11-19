@@ -21,6 +21,7 @@ dwm-status.sh ──sources──► dwm-status-tools.sh ──sources──► 
                                                            utils/weather.sh
                                                            utils/notify.sh
                                                            utils/vpsbandwidth.sh
+                                                           ──requires─► curl, jq (update_proxy_status_daemon: dae lifecycle + sing-box process)
 dwm-statuscmd.sh ──sources──► utils/notify.sh, utils/vpsbandwidth.sh
 autostart.sh ──sources──► utils/launch.sh
 tools/theme.sh ──sources──► utils/notify.sh, utils/launch.sh, tools/monitor-brightness.sh
@@ -84,7 +85,14 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | ----------- | --------------------------------------------------------------- |
 | `bar_gauge()` | print_battery, print_vps_bandwidth — 状态栏通用进度条: 外框(+可选端子) + 黑色内底 + 按比例填充, 外框/填充统一按传入 `fg` 上色, 末尾 `^d^` 复位色 + `^fN^` 前移留白; 参数 `<x> <y> <w> <h> <pct> <fg> <h\|v> <advance> [nub_w]` (h 从右往左 / v 从下往上; pct 钳制 0~100, 非零比例至少 1px, 0% 不填充) |
 | `print_battery()` | dwm-status.sh panes() — acpi 读状态/电量 → 配色 (放电 <20% 红, 充电绿) → `bar_gauge 8 11 18 10 ... h 32 2` (端子宽 2) |
+| `print_proxy()` | dwm-status.sh panes() — 读 `/tmp/dwm-status/proxy-state` (`dae=suspended` 黄色; 否则 `dae=running|unknown` 或 `sing-box=running` 白色; 缓存确认都没运行 → 空); 文件不存在时回退旧行为 (`pgrep -x sing-box` 或 `pgrep -x dae` → 白色)。**不联网** (API 请求全在 `update_proxy_status_daemon`) |
 | `print_vps_bandwidth()` | dwm-status.sh panes() — 只读 `/tmp/dwm-status/vps-bandwidth` (`used\|limit\|percent\|ts\|stale`), 输出两行 `usage:193G` / `limit:500G` + 右侧 10×24 竖条 (余量 `100-percent`, `bar_gauge 0 4 10 24 ... v 20`, 耗尽/超额钳制为空); 配色仍按已用: ≥80% 黄 / ≥90% 红 / `stale=1` 行尾 `!`; 无缓存不输出 (block 被 dwm 丢弃)。**不联网**: 请求全在 `update_vps_bandwidth` daemon 侧 |
+
+### dwm-status-tools.sh（daemon）
+
+| 函数 | 调用者 |
+| ---- | ------ |
+| `update_proxy_status_daemon()` | dwm-status.sh launch_daemon (`update_proxy_status_daemon &`) — 每 2s 原子写 `proxy-state`: dae 进程存在 → `GET $DAE_API/api/v1/runtime` 取 `lifecycle.state` (running/suspended, 读不到写 unknown), 不存在则不写; sing-box 进程存在 → `sing-box=running`。两个都没有时写空文件 (供 print_proxy 区分“确认未运行”与“daemon 未启动”)。`DAE_API`/`DAE_API_SECRET` 可覆盖默认 `http://127.0.0.1:9527` |
 
 ### utils/vpsbandwidth.sh (core + 厂商 provider)
 
@@ -639,12 +647,16 @@ dwm-status.sh
     (顺序/分组/圆角归 dwm config.h 的 bar_left/bar_right; 空 block 只留
      id 字节, 由 dwm 的 bar_blocks 丢弃)
   → launch_daemon(update_*_daemon)
-    └─ interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth
-       (上次执行时间落盘, 距上次不足 interval 的热重启直接跳过, 见已知问题)
-       → provider (默认 dedione): token = config.auth_token || Firefox cookies.sqlite
-       → GET 产品页 (拿会话 cookie + 新鲜 vtoken) → GET api=json&act=bandwidth
-       → 校验 > 原子写 /tmp/dwm-status/vps-bandwidth (失败保留旧值 + stale=1)
-       → 旧 percent 档位 vs 新值档位: 跨 80/90 档时 system-notify 一次 (降档/同档静默)
+    ├─ interval_update_daemon -i $(vpsbandwidth_interval) update_vps_bandwidth
+    │  (上次执行时间落盘, 距上次不足 interval 的热重启直接跳过, 见已知问题)
+    │  → provider (默认 dedione): token = config.auth_token || Firefox cookies.sqlite
+    │  → GET 产品页 (拿会话 cookie + 新鲜 vtoken) → GET api=json&act=bandwidth
+    │  → 校验 > 原子写 /tmp/dwm-status/vps-bandwidth (失败保留旧值 + stale=1)
+    │  → 旧 percent 档位 vs 新值档位: 跨 80/90 档时 system-notify 一次 (降档/同档静默)
+    └─ update_proxy_status_daemon (2s)
+       → dae: GET /api/v1/runtime → dae=running|suspended|unknown
+       → sing-box: pgrep → sing-box=running
+       → 原子写 /tmp/dwm-status/proxy-state; print_proxy 读缓存 (suspended 黄 / 其余白)
   → xsetroot -name "$status"
 
 dwm-statuscmd.sh (状态栏点击)
@@ -859,7 +871,8 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **pin 忽略健康检查**: 固定到已失效节点不会自动切回 (API 语义与 selector 相同), 菜单 `Auto` 行 (`DELETE .../selection?network=both`) 用于清除 pin; 当前 API 的 `can_override` 与 `source=override` 共同决定是否显示该行。
 - **CLI `dae reload/suspend` 需要 root** (实测直接弹 sudo); 菜单的 Suspend/Resume 走 `POST /operations/*` + `GET /operations/{id}` 轮询, 无需 sudo。API 操作是异步 202, 失败原因取 `.error.message`。
 - **主菜单组行不显示当前节点**: 只留 `组名 / policy / 延迟`; 节点多时 `成员 / 成员` 会把行拉长且长度不可控, 当前选中节点改在进入组后的成员子菜单看 (`✓`/`~`)。回归测试 `tests/dae_test.sh` A3b。
-- **ST_PROXY 左键只认 dae**: 原先 `(pgrep -x sing-box && sing-box.sh)` 改为 `(pgrep -x dae && dae.sh)`, 不回落 sing-box; 右键 (sing-box Clash UI 9090) 按用户要求暂不改。`print_proxy` 本就同时认 `sing-box`/`dae`, 未改。回归测试 `tests/dae_test.sh` (组行/成员标记/Auto/PUT/DELETE/suspend-resume/API 错误/静态接线)。
+- **dae suspend 后进程仍在, print_proxy 不能只看 pgrep**: `dae suspend` 进入 no-load (不再代理) 但 daemon 进程与 API 都在, 旧 `print_proxy` 只 `pgrep -x dae` 仍显示白色, 无法区分。现 `update_proxy_status_daemon` 每 2s 原子写 `/tmp/dwm-status/proxy-state` (`dae=running|suspended|unknown`, `sing-box=running`): dae 状态取 `GET /api/v1/runtime` 的 `lifecycle.state` (读不到写 `unknown`), sing-box 只按进程存续 (无挂起状态)。`print_proxy` 只读缓存: dae suspended 黄; 否则 dae running/unknown 或 sing-box running 白; 缓存存在但两行都没有 → 不显示; 文件不存在才回退旧 pgrep 行为。`panes()` **不联网**。`DAE_API`/`DAE_API_SECRET` 可覆盖 API 地址与 token。回归测试 `tests/status-proxy-state_test.sh` (A/B/C/D 组)
+- **ST_PROXY 左键只认 dae**: 原先 `(pgrep -x sing-box && sing-box.sh)` 改为 `(pgrep -x dae && dae.sh)`, 不回落 sing-box; 右键 (sing-box Clash UI 9090) 按用户要求暂不改。`print_proxy` 现读 `proxy-state` 缓存区分 running/suspended (见上条)。回归测试 `tests/dae_test.sh` (组行/成员标记/Auto/PUT/DELETE/suspend-resume/API 错误/静态接线)。
 
 ### Steam Workshop
 

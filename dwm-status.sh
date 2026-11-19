@@ -79,6 +79,8 @@ launch_daemon() {
     pids+=($!)
     update_docker_daemon &
     pids+=($!)
+    update_proxy_status_daemon &
+    pids+=($!)
 
     # 保存当前进程 PID
     echo $BASHPID >/tmp/dwm-status/status-daemon-pid

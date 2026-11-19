@@ -289,6 +289,24 @@ print_rss() {
 }
 
 print_proxy() {
+    local file=${proxy_state_path:-} dae="" singbox="" key value
+    if [[ -n "$file" && -f "$file" ]]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+            dae) dae=$value ;;
+            sing-box) singbox=$value ;;
+            esac
+        done <"$file"
+
+        if [[ "$dae" == suspended ]]; then
+            printf "^c$yellow^${icons["proxy"]}"
+        elif [[ "$dae" == running || "$dae" == unknown || "$singbox" == running ]]; then
+            printf "^c$white^${icons["proxy"]}"
+        fi
+        return
+    fi
+
+    # 缓存尚未建立 (daemon 未起) → 保留旧的进程探测行为
     (pgrep -x sing-box >/dev/null || pgrep -x dae >/dev/null) && printf "^c$white^${icons["proxy"]}"
 }
 
