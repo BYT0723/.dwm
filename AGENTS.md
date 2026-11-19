@@ -22,7 +22,7 @@ dwm-status.sh ──sources──► dwm-status-tools.sh ──sources──► 
                                                            utils/notify.sh
                                                            utils/vpsbandwidth.sh
                                                            ──requires─► curl, jq (update_proxy_status_daemon: dae lifecycle + sing-box process)
-dwm-statuscmd.sh ──sources──► utils/notify.sh, utils/vpsbandwidth.sh
+dwm-statuscmd.sh ──sources──► utils/notify.sh, utils/vpsbandwidth.sh; ──requires──► curl, jq (ST_PROXY 右键读 dae runtime); ──calls──► xdg-open (sing-box Clash UI)
 autostart.sh ──sources──► utils/launch.sh
 tools/theme.sh ──sources──► utils/notify.sh, utils/launch.sh, tools/monitor-brightness.sh
                 ──requires─► xsettingsd, dconf (gsettings), curl (GTK/portal 双通道广播 / auto 日出日落)
@@ -93,6 +93,15 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | 函数 | 调用者 |
 | ---- | ------ |
 | `update_proxy_status_daemon()` | dwm-status.sh launch_daemon (`update_proxy_status_daemon &`) — 每 2s 原子写 `proxy-state`: dae 进程存在 → `GET $DAE_API/api/v1/runtime` 取 `lifecycle.state` (running/suspended, 读不到写 unknown), 不存在则不写; sing-box 进程存在 → `sing-box=running`。两个都没有时写空文件 (供 print_proxy 区分“确认未运行”与“daemon 未启动”)。`DAE_API`/`DAE_API_SECRET` 可覆盖默认 `http://127.0.0.1:9527` |
+
+### dwm-statuscmd.sh
+
+| 函数 | 调用者 |
+| ---- | ------ |
+| `_proxy_right_click()` | `[$ST_PROXY,$right]` — dae 进程在 → `_dae_runtime_status`; 否则 sing-box 在 → `xdg-open http://127.0.0.1:9090/ui`; 都不在 → 通知 `dae / sing-box not running` |
+| `_dae_runtime_status()` | _proxy_right_click — `GET $DAE_API/api/v1/runtime`, 通知 `state / uptime / connections(tcp,udp) / rate / total / cpu`; `DAE_API`/`DAE_API_SECRET` 可覆盖 API 与 token; 不可达/非 JSON 时通知错误 |
+| `_proxy_fmt_bytes()` / `_proxy_fmt_uptime()` | _dae_runtime_status — 字节 (B/KiB/MiB…) 与 uptime 人读格式化 |
+| `_proxy_notify()` | _dae_runtime_status / _proxy_right_click — 统一 `notify-send -c status -i network-wired -h string:x-dunst-stack-tag:proxyStatus` |
 
 ### utils/vpsbandwidth.sh (core + 厂商 provider)
 
@@ -664,7 +673,7 @@ dwm-status.sh
 
 dwm-statuscmd.sh (状态栏点击)
   → volume.sh / brightness.sh / calendar.sh / mpd.sh / dae.sh / notification.sh / ... (按模块)
-    └─ ST_PROXY 左键: pgrep -x dae && rofi/scripts/dae.sh (只认 dae; 右键保持 sing-box Clash UI 未改)
+    └─ ST_PROXY 左键: pgrep -x dae && rofi/scripts/dae.sh (只认 dae); 右键: _proxy_right_click (dae 运行时指标 / sing-box Clash UI)
 ```
 
 ### rofi 启动器链路
@@ -877,7 +886,7 @@ calendar-lunar|󰃚|Lunar Calendar|
 - **CLI `dae reload/suspend` 需要 root** (实测直接弹 sudo); 菜单的 Suspend/Resume 走 `POST /operations/*` + `GET /operations/{id}` 轮询, 无需 sudo。API 操作是异步 202, 失败原因取 `.error.message`。
 - **主菜单组行不显示当前节点**: 只留 `组名 / policy / 延迟`; 节点多时 `成员 / 成员` 会把行拉长且长度不可控, 当前选中节点改在进入组后的成员子菜单看 (`✓`/`~`)。回归测试 `tests/dae_test.sh` A3b。
 - **dae suspend 后进程仍在, print_proxy 不能只看 pgrep**: `dae suspend` 进入 no-load (不再代理) 但 daemon 进程与 API 都在, 旧 `print_proxy` 只 `pgrep -x dae` 仍显示白色, 无法区分。现 `update_proxy_status_daemon` 每 2s 原子写 `/tmp/dwm-status/proxy-state` (`dae=running|suspended|unknown`, `sing-box=running`): dae 状态取 `GET /api/v1/runtime` 的 `lifecycle.state` (读不到写 `unknown`), sing-box 只按进程存续 (无挂起状态)。`print_proxy` 只读缓存: dae suspended 黄; 否则 dae running/unknown 或 sing-box running 白; 缓存存在但两行都没有 → 不显示; 文件不存在才回退旧 pgrep 行为。`panes()` **不联网**。`DAE_API`/`DAE_API_SECRET` 可覆盖 API 地址与 token。回归测试 `tests/status-proxy-state_test.sh` (A/B/C/D 组)
-- **ST_PROXY 左键只认 dae**: 原先 `(pgrep -x sing-box && sing-box.sh)` 改为 `(pgrep -x dae && dae.sh)`, 不回落 sing-box; 右键 (sing-box Clash UI 9090) 按用户要求暂不改。`print_proxy` 现读 `proxy-state` 缓存区分 running/suspended (见上条)。回归测试 `tests/dae_test.sh` (组行/成员标记/Auto/PUT/DELETE/suspend-resume/API 错误/静态接线)。
+- **ST_PROXY 左键只认 dae**: 原先 `(pgrep -x sing-box && sing-box.sh)` 改为 `(pgrep -x dae && dae.sh)`, 不回落 sing-box。右键按运行者分流: **dae 在跑 → `_dae_runtime_status` 通知 `/api/v1/runtime` 指标** (state/uptime/connections/rate/total/cpu); 否则 sing-box 在跑 → 仍打开 Clash UI; 都不在 → 通知 not running。`print_proxy` 读 `proxy-state` 缓存区分 running/suspended (见上条)。回归测试 `tests/dae_test.sh` + `tests/statuscmd-proxy-status_test.sh`。
 
 ### Steam Workshop
 

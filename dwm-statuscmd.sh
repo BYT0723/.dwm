@@ -126,6 +126,83 @@ _docker_list() {
     notify-send -c status -i docker -h string:x-dunst-stack-tag:dockerStatus "Docker" "${out:-no data (daemon down?)}"
 }
 
+_proxy_fmt_bytes() {
+    awk -v n="${1:-0}" 'BEGIN {
+        split("B KiB MiB GiB TiB", u, " ")
+        i = 1
+        while (n >= 1024 && i < 5) { n /= 1024; i++ }
+        if (i == 1) printf "%d %s", n, u[i]
+        else printf "%.1f %s", n, u[i]
+    }'
+}
+
+_proxy_fmt_uptime() {
+    local s=${1:-0} d h m
+    [[ $s =~ ^[0-9]+$ ]] || s=0
+    d=$((s / 86400)) h=$(((s % 86400) / 3600)) m=$(((s % 3600) / 60))
+    if ((d > 0)); then
+        printf '%dd %dh' "$d" "$h"
+    elif ((h > 0)); then
+        printf '%dh %dm' "$h" "$m"
+    else
+        printf '%dm' "$m"
+    fi
+}
+
+_proxy_notify() { # title message
+    notify-send -c status -i network-wired -h string:x-dunst-stack-tag:proxyStatus "$1" "$2"
+}
+
+_dae_runtime_status() {
+    local api=${DAE_API:-http://127.0.0.1:9527} secret=${DAE_API_SECRET:-}
+    local -a args=(-s -m 2 -H "Accept: application/json")
+    [[ -n "$secret" ]] && args+=(-H "Authorization: Bearer $secret")
+    api=${api%/}
+
+    local body
+    body=$(curl "${args[@]}" "$api/api/v1/runtime" 2>/dev/null) || {
+        _proxy_notify "dae Runtime" "API unreachable: $api"
+        return
+    }
+    if ! jq -e '.lifecycle' >/dev/null 2>&1 <<<"$body"; then
+        local err
+        err=$(jq -r '.error.message // empty' <<<"$body" 2>/dev/null)
+        _proxy_notify "dae Runtime" "${err:-invalid response from $api}"
+        return
+    fi
+
+    local state uptime total tcp udp uprate downrate upbytes downbytes cpu cpu_str msg
+    read -r state uptime total tcp udp uprate downrate upbytes downbytes cpu < <(
+        jq -r '[.lifecycle.state // "?", .lifecycle.uptime_seconds // "0",
+            .traffic.connections.total // 0, .traffic.connections.tcp // 0,
+            .traffic.connections.udp // 0,
+            .traffic.rates.upload_bytes_per_second // "0",
+            .traffic.rates.download_bytes_per_second // "0",
+            .traffic.bytes.upload // "0", .traffic.bytes.download // "0",
+            .process.cpu_percent // 0] | @tsv' <<<"$body"
+    )
+    cpu_str=$(awk -v c="$cpu" 'BEGIN {
+        if (c == int(c)) printf "%d", c
+        else printf "%.1f", c
+    }')
+
+    msg=$(printf 'state: %s\nuptime: %s\nconnections: %s (tcp %s / udp %s)\nrate: ↑ %s/s  ↓ %s/s\ntotal: ↑ %s  ↓ %s\ncpu: %s%%' \
+        "$state" "$(_proxy_fmt_uptime "$uptime")" "$total" "$tcp" "$udp" \
+        "$(_proxy_fmt_bytes "$uprate")" "$(_proxy_fmt_bytes "$downrate")" \
+        "$(_proxy_fmt_bytes "$upbytes")" "$(_proxy_fmt_bytes "$downbytes")" "$cpu_str")
+    _proxy_notify "dae Runtime" "$msg"
+}
+
+_proxy_right_click() {
+    if pgrep -x dae >/dev/null; then
+        _dae_runtime_status
+    elif pgrep -x sing-box >/dev/null; then
+        xdg-open "http://127.0.0.1:9090/ui"
+    else
+        _proxy_notify "Proxy" "dae / sing-box not running"
+    fi
+}
+
 _docker_monitor() {
     command -v lazydocker >/dev/null 2>&1 && {
         _topen lazydocker
@@ -189,7 +266,7 @@ declare -A actions=(
     [$ST_RSS,$left]=_rss_notify
     [$ST_RSS,$right]=_rss_launch
     [$ST_PROXY,$left]='(pgrep -x dae && "$ROFI_SCRIPT_DIR/dae.sh")'
-    [$ST_PROXY,$right]='(pgrep -x sing-box && xdg-open "http://127.0.0.1:9090/ui")'
+    [$ST_PROXY,$right]=_proxy_right_click
     [$ST_NOTIFY,$left]='(n=$(dunstctl count history); while ((n-- > 0)); do dunstctl history-pop; done)'
     [$ST_NOTIFY,$right]='"$ROFI_SCRIPT_DIR/notification.sh"'
     [$ST_SCREENCAST,$left]='"$ROFI_SCRIPT_DIR/screencast.sh"'
