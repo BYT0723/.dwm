@@ -50,7 +50,7 @@ END {
     shot_and_preview --region "$region"
 }
 
-shot_timer() { sleep 5 && shot_desktop; }
+shot_timer() { sleep 5 && shot_and_preview; }
 
 flameshot_setting
 
