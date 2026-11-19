@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# 1-2
+# 3-5
 dir="$HOME/.dwm/rofi/launchers/type-1"
 theme='style-2'
 quicklinks="$HOME/.dwm/rofi/scripts/quicklinks-mode.sh"
@@ -11,8 +13,10 @@ rofi \
     -show-icons \
     -display-combi " " \
     -display-drun "" \
-    -display-run " " \
-    -display-ssh " " \
+    -drun-display-format "{name} [<span weight='light' size='small'><i>({generic})</i></span>]" \
+    -display-run "" \
+    -display-ssh "" \
+    -display-emoji "󰞅 " \
     -theme-str 'configuration {display-quicklinks: "󰖟 ";}' \
     -display-calc "󰪚 " \
     -theme-str 'configuration { calc {
@@ -20,9 +24,10 @@ rofi \
         terse: false;
         no-history: true;
         calc-command: "echo -n '{result}' | xclip -selection clipboard";
-        hint-result: "Res: ";
+        hint-result: "Result: ";
 		hint-welcome: "calculate something...";
     }}' \
+    -theme-str 'element-text {font: "Noto Sans CJK SC 14"; }' \
     -theme-str 'configuration {terminal: "'${TERMINAL:-kitty}'";}' \
     -show combi \
     -theme "${dir}/${theme}.rasi"
