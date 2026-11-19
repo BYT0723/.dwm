@@ -202,8 +202,10 @@ select_marker_wallpaper() {
     menu_nul=$(mktemp)
     trap 'rm -f "$menu" "$map" "$menu_nul"' RETURN
 
-    local d id title icon
+    local d id title icon display
     local -A seen=()
+    local -a _dirs=() _titles=() _ids=()
+    local -A _title_count=()
     while IFS= read -r d; do
         [ -z "$d" ] && continue
         # 去重到目录, 保证 menu 与 map 行号一一对应
@@ -216,11 +218,26 @@ select_marker_wallpaper() {
             [ -z "$title" ] && title="$id"
         fi
         title=$(printf '%s' "$title" | tr '\t\n\r' '   ')
-        icon=$(project_preview "$d" 2>/dev/null) || icon=""
-        # NUL 字节 bash 变量装不下: 行尾先写 \001 占位, 喂 rofi 前统一 tr 成 NUL
-        printf '%s (%s)\001icon\x1f%s\x1f\n' "$title" "$id" "$icon" >>"$menu"
-        printf '%s\n' "$d" >>"$map"
+        _dirs+=("$d")
+        _titles+=("$title")
+        _ids+=("$id")
+        _title_count["$title"]=$((${_title_count["$title"]:-0} + 1))
     done <<<"$files"
+    local i
+    for i in "${!_dirs[@]}"; do
+        d="${_dirs[$i]}"
+        title="${_titles[$i]}"
+        id="${_ids[$i]}"
+        icon=$(project_preview "$d" 2>/dev/null) || icon=""
+        # 标题唯一时干净显示; 重名且 title != id 时附 (id) 区分
+        display="$title"
+        if [ "${_title_count[$title]:-0}" -gt 1 ] && [ "$title" != "$id" ]; then
+            display="$title ($id)"
+        fi
+        # NUL 字节 bash 变量装不下: 行尾先写 \001 占位, 喂 rofi 前统一 tr 成 NUL
+        printf '%s\001icon\x1f%s\x1f\n' "$display" "$icon" >>"$menu"
+        printf '%s\n' "$d" >>"$map"
+    done
     # 末条 yazi 目录入口 (同 image/video 按目录挑选): menu/map 行号保持一一对应
     printf '%s\001icon\x1f%s\x1f\n' "󰉋 Browse directory (yazi)" "" >>"$menu"
     printf '%s\n' "__YAZI__" >>"$map"
