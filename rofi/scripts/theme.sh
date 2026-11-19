@@ -6,7 +6,6 @@ WORK_DIR="$(dirname "$ROFI_DIR")"
 MODULE_THEME="$ROFI_DIR/applets/type-1/style-2.rasi"
 MODULE_MAX_LINES=10
 MODULE_NAME="☀ Theme"
-ITEM_SPACE_WIDTH=34
 
 source "$(dirname "$0")"/util.sh
 source "$(dirname "$0")"/lib-module.sh
@@ -65,11 +64,11 @@ handle_monitor_brightness() {
     # 循环: 调完一个显示器后回到选择, 可连续调节多个, ESC 退出
     while true; do
         chosen=$(while read -r monitor; do
-            printf "󰍹 %-32s %4s\n" "$monitor" "$(read_brightness "$monitor")"
+            printf "󰍹 %s\t%s\n" "$monitor" "$(read_brightness "$monitor")"
         done < <(
             xrandr --listactivemonitors 2>/dev/null |
                 awk 'NR > 1 {print $NF}'
-        ) | module_sub_rofi "󰃠 Monitor Brightness" "Control brightness of monitors")
+        ) | column -t -s $'\t' -R 2 | module_sub_rofi "󰃠 Monitor Brightness" "Control brightness of monitors")
         [ -z "$chosen" ] && break
 
         read -r _ monitor brightness <<<"$chosen"

@@ -79,10 +79,11 @@ handle_network() {
     wifi=$(nmcli -t -f IN-USE,SSID,SIGNAL dev wifi list | awk -F: '/^\*/ {printf "%s(%s%%)", $2, $3}')
     [[ -n "$eth" ]] && mesg="  $eth"
     [[ -n "$wifi" ]] && mesg="${mesg:+$mesg\n}  $wifi"
-    local opts=$(nmcli -t -f BARS,BAND,BSSID,SSID dev wifi list --rescan auto | awk -F: '{ ssid=$NF; if (ssid=="") { bssid=""; for (i=3;i<NF;i++) bssid=bssid (i>3?":":"") $i; ssid=bssid; gsub(/\\:/, ":", ssid) } printf "%4s [%7s] %s\n", $1, $2, ssid }' | awk '!a[$0]++')
+    local opts=$(nmcli -t -f BARS,BAND,BSSID,SSID dev wifi list --rescan auto | awk -F: '{ ssid=$NF; if (ssid=="") { bssid=""; for (i=3;i<NF;i++) bssid=bssid (i>3?":":"") $i; ssid=bssid; gsub(/\\:/, ":", ssid) } printf "%s\t[%7s]\t%s\n", $1, $2, ssid }' | awk '!a[$0]++' | column -t -s $'\t' -R 1)
     local chosen=$(echo "$opts" | module_sub_rofi "Network" "$mesg")
     [[ -z "$chosen" ]] && return
     chosen="${chosen#*] }"
+    chosen="${chosen#"${chosen%%[! ]*}"}"
     [[ "$chosen" == "$(nmcli -t -f IN-USE,SSID dev wifi list | awk -F: '$1=="*"{print $2}')" ]] && return
     if [[ "$chosen" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
         local ssid

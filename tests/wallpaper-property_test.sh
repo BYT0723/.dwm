@@ -76,7 +76,7 @@ source "$DWM/tools/wallpaper-render.sh"
 # 被测函数提取 (rofi 脚本顶层含 module_loop, 仅提取 handle_property + helper)
 eval "$(awk '/^(prop_tunables|prop_combo_options|prop_range|prop_color_hex|prop_hex_to_rgb|prop_commit_once|prop_label|prop_wall_dir|prop_pick_file|handle_property|_apply_property)\(\) \{/{f=1} f{print} f && /^}/{f=0}' "$DWM/rofi/scripts/wallpaper.sh")"
 
-module_sub_rofi() { echo "rofi $*" >>"$XW_MOCK_LOG"; cat >>"$TEST_DIR/rofi_in.txt"; [ -e "$SEL_FLAG" ] && return; touch "$SEL_FLAG"; printf '%s' "$MOCK_PICK"; }
+module_sub_rofi() { echo "rofi $*" >>"$XW_MOCK_LOG"; local _in; _in=$(cat); printf '%s\n' "$_in" >>"$TEST_DIR/rofi_in.txt"; [ -e "$SEL_FLAG" ] && return; touch "$SEL_FLAG"; local _line; _line=$(printf '%s\n' "$_in" | grep -F -m1 -x "$MOCK_PICK" || true); [ -n "$_line" ] || _line=$(printf '%s\n' "$_in" | grep -F -m1 "$MOCK_PICK" || printf '%s' "$MOCK_PICK"); printf '%s' "$_line"; }
 module_input() { echo "input $*" >>"$XW_MOCK_LOG"; printf '%s' "$MOCK_INPUT"; }
 system-notify() { echo "notify $*" >>"$XW_MOCK_LOG"; }
 
@@ -306,9 +306,8 @@ JSON
 printf 'DP-1\tweb\t%s\t0\n' "$XW_MOCK_STATE/wall" >"$XW_MOCK_STATE/state"
 export YAD_OUT='120
 ' YAD_RC=0
-T3_LINE=$(printf '%-36s %10s' "角色缩放 / Role Scale" "100")
 MODULE_WIDTH=500
-MONITOR="DP-1" MOCK_PICK="$T3_LINE" handle_property 2>"$TEST_DIR/t3.err"
+MONITOR="DP-1" MOCK_PICK="角色缩放 / Role Scale" handle_property 2>"$TEST_DIR/t3.err"
 check "T3: 三列回退无 integer expected" '! grep -q "integer expected" "$TEST_DIR/t3.err"'
 check "T3: 列表显示 text 全串" 'grep -Fq "角色缩放 / Role Scale" "$TEST_DIR/rofi_in.txt"'
 check "T3: 列表不显示英文 name" '! grep -q "roleScale" "$TEST_DIR/rofi_in.txt"'
@@ -319,8 +318,7 @@ check "T8: 不污染全局 MODULE_WIDTH" '[ "$MODULE_WIDTH" = 500 ]'
 reset_state
 printf 'volume\tbool\tfalse\t音量\nroleScale\tbool\tfalse\t角色缩放\n' >"$XW_MOCK_STATE/props"; export XW_PROPS_RC=0
 printf 'DP-1\tweb\t%s\t0\n' "$XW_MOCK_STATE/wall" >"$XW_MOCK_STATE/state"
-T10_LINE=$(printf '%-36s %10s' "角色缩放" "false")
-MONITOR="DP-1" MOCK_PICK="$T10_LINE" handle_property
+MONITOR="DP-1" MOCK_PICK="角色缩放" handle_property
 check "T10: 优先调用 --labels" 'grep -q -- "--list-properties --labels" "$XW_MOCK_LOG"'
 check "T10: 菜单显示第四列 label" 'grep -Fq "角色缩放" "$TEST_DIR/rofi_in.txt"'
 check "T10: 不显示英文 name" '! grep -q "roleScale" "$TEST_DIR/rofi_in.txt"'
@@ -330,8 +328,7 @@ check "T10: set 仍用英文 name" 'grep -q "set-property roleScale=true" "$XW_M
 reset_state
 printf 'a\tbool\tfalse\t亮度\nb\tbool\tfalse\t亮度\n' >"$XW_MOCK_STATE/props"; export XW_PROPS_RC=0
 printf 'DP-1\tweb\t%s\t0\n' "$XW_MOCK_STATE/wall" >"$XW_MOCK_STATE/state"
-T11_LINE=$(printf '%-36s %10s' "亮度 (b)" "false")
-MONITOR="DP-1" MOCK_PICK="$T11_LINE" handle_property
+MONITOR="DP-1" MOCK_PICK="亮度 (b)" handle_property
 check "T11: 重名标签附 name" 'grep -Fq "亮度 (a)" "$TEST_DIR/rofi_in.txt" && grep -Fq "亮度 (b)" "$TEST_DIR/rofi_in.txt"'
 check "T11: 选中 b 设置 b=true" 'grep -q "set-property b=true" "$XW_MOCK_LOG"'
 check "T11: 不误改 a" '! grep -q "set-property a=" "$XW_MOCK_LOG"'

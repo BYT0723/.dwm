@@ -11,8 +11,6 @@
 # 使用方法见末尾注释
 
 MODULE_WIDTH="${MODULE_WIDTH:-500}"
-ENTRY_NAME_WIDTH="${ITEM_SPACE_WIDTH:-38}"
-ENTRY_STATE_WIDTH=$((40 - ENTRY_NAME_WIDTH))
 
 _module_menu_build() {
     # 新鲜度: 每构建重采进程快照 (同构建内复用, toggle 后重建正确);
@@ -32,12 +30,16 @@ _module_menu_build() {
         local status=$(_module_status "$key" "${MODULE_STATUS[$key]}")
 
         if [[ "$layout" == 'NO' ]]; then
-            MAIN_OPTS+=("$(printf "%-${ENTRY_NAME_WIDTH}s %${ENTRY_STATE_WIDTH}s" "${icon} ${label}" "$status")")
+            MAIN_OPTS+=("${icon} ${label}"$'\t'"$status")
         else
             MAIN_OPTS+=("$icon $status")
         fi
         OPT_KEYS+=("$key")
     done
+
+    # Tab-separated raw rows -> column aligns by display width (CJK/Nerd Font safe)
+    ((${#MAIN_OPTS[@]})) && [[ "$layout" == 'NO' ]] &&
+        mapfile -t MAIN_OPTS < <(printf '%s\n' "${MAIN_OPTS[@]}" | column -t -s $'\t')
 
     local count=${#MODULE_KEYS[@]}
     [ "$_module_col" = "1" ] && _module_row=${MODULE_MAX_LINES:-$count} || _module_col=$count

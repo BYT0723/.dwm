@@ -44,8 +44,8 @@ get_selectors() {
             else
                 delay_str="${delay:-✗}"
             fi
-            printf "%-16s  %-20s%6s\n" "$key" "$now" "$delay_str"
-        done
+            printf "%s\t  %s\t%s\n" "$key" "$now" "$delay_str"
+        done | column -t -s $'\t' -R 3
 }
 
 get_options() {
@@ -76,9 +76,9 @@ get_options() {
 			show = name
 			if (type == "URLTest" && now != "" && now != name)
 				show = name " → " now
-			printf "%2s%-26s%-8s%8s\n", marker, show, type, delay_str
+			printf "%s\t%s\t%s\n", marker show, type, delay_str
 		}
-	'
+	' | column -t -s $'\t' -R 3
 }
 
 get_now() {

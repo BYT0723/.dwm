@@ -475,7 +475,8 @@ handle_property() {
         # color 值显示为 hex (纯表现层, 转换失败回退原值)。
         local -A _line_to_name=()
         local -A _label_count=()
-        local menu="" chosen line label pn pt pv pl _n _t _v _l
+        local menu="" chosen label pn pt pv pl _n _t _v _l
+        local -a _raw_lines=() _raw_names=()
         # 第四列是 xwallpaper --labels 的本地化标签; 旧三列时用 name 参与去重。
         while IFS=$'\t' read -r _n _t _v _l; do
             [ -n "$_n" ] || continue
@@ -489,10 +490,19 @@ handle_property() {
             [ -n "$label" ] || label="$pn"
             # 中文标签会重名 (亮度/颜色/大小...); 只在重名时附英文 name 保证映射唯一
             [ "${_label_count[$label]:-0}" -gt 1 ] && label="$label ($pn)"
-            line=$(printf '%-36s %10s' "$label" "$pv")
-            _line_to_name["$line"]="$pn"
-            menu+="$line"$'\n'
+            _raw_lines+=("$label"$'\t'"$pv")
+            _raw_names+=("$pn")
         done <<<"$tunables"
+        # Raw tab rows -> column aligns by display width (CJK safe); value 列右对齐
+        if ((${#_raw_lines[@]})); then
+            local -a _disp_lines=()
+            mapfile -t _disp_lines < <(printf '%s\n' "${_raw_lines[@]}" | column -t -s $'\t' -R 2)
+            local i
+            for i in "${!_disp_lines[@]}"; do
+                _line_to_name["${_disp_lines[$i]}"]="${_raw_names[$i]}"
+                menu+="${_disp_lines[$i]}"$'\n'
+            done
+        fi
         menu+="$RESET_LINE"$'\n'
         chosen=$(printf '%s' "$menu" | module_sub_rofi "Property ($MONITOR)" "Select a slider/color/file/bool/combo property")
         [ -z "$chosen" ] && return
