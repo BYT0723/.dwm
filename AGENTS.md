@@ -213,7 +213,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `_gen_id()`        | _ensure_ids, _new_form (uuid 优先, base64 fallback)                    |
 | `_ensure_ids()`    | _list (全部有 id 时零写入早退, 仅缺 id 时全量重生成)                    |
 | `_ensure_tags()`   | _list (旧数据一次性迁移: name 末尾 `(tags)` 拆到 `tags` 数组, 半/全角括号可混用、括号前空格可选; 无括号 → `[]`; 已有 `tags` 键不动 → 幂等零写入) |
-| `_tags_markup()`   | _list (把 `/` 拼接的 tag 串渲染为 Pango 背景色块 `<span background>` chip, 结果写 `$_TAGS_MARKUP`; 按 tag 内容 hash 取 `_TAG_BG` 调色板 (同名 tag 同色), NBSP 撑内边距; 逐字符 hash 用 `printf -v` 内置零 fork) |
+| `_tags_markup()`   | _list (把 `/` 拼接的 tag 串渲染为 Pango 背景色块 `<span background>` chip (`size='small'` 缩小字号), 结果写 `$_TAGS_MARKUP`; 按 tag 内容 hash 取 `_TAG_BG` 调色板 (同名 tag 同色), NBSP 撑内边距; 逐字符 hash 用 `printf -v` 内置零 fork) |
 | `_load()`          | _list/_list_hist/_list_bm (构建 `_links` 五元组数组 `name|id|url|host|tags`, tags 为 `/` 拼接串仅供显示; host 一次性提取复用, 避免每次 fork python3) |
 | `_host_from_url()` | _load (纯 bash 参数展开提取 hostname, 零子进程; 结果写 `$_HOST` 全局变量而非 stdout — 避免 `$()` 命令替换 fork, _load 循环每行一次约省 40ms/64 条) |
 | `_markup_escape()` | _list (link name / searcher key+name), _print_browser_rows (标题) — 转义 `&`→`&amp;`、`<`→`&lt;`、`>`→`&gt;` 写 `$_MARKUP` 全局变量 (零子进程; bash 替换串里的 `&` 是"匹配文本"占位, 字面 & 须写 `\&`); footer 开启 `markup-rows` 后不转义会让 pango 解析失败 → 该行被过滤逻辑整行丢弃 |

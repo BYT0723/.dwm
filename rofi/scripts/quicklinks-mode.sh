@@ -73,7 +73,7 @@ _tags_markup() {
             h=$(((h * 31 + code) % 4096))
         done
         _markup_escape "$tag"
-        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG'>$nbsp$_MARKUP$nbsp</span> "
+        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG' size='small'>$nbsp$_MARKUP$nbsp</span> "
     done
     _TAGS_MARKUP=${out% }
 }
