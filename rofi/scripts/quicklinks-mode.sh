@@ -50,6 +50,34 @@ _markup_escape() {
     _MARKUP=${_MARKUP//>/\&gt;}
 }
 
+# ---- tag chip ----
+# 深色底块 (Pango <span background>, rofi 会绘制) + 浅前景: 明暗主题下都清晰;
+# 颜色按 tag 内容取模, 同名 tag 跨链接颜色一致
+_TAG_BG=("#4c566a" "#5e81ac" "#7a5b7d" "#6f7a52")
+_TAG_FG="#eceff4"
+
+# 把 "/" 分隔的 tag 串渲染成 chip 串, 结果写 $_TAGS_MARKUP (空串表示无 tag)
+# 前景/背景由本函数生成, tag 文本仍须 markup 转义; NBSP 撑出块内边距
+_tags_markup() {
+    local tags="$1" tag i code h out="" nbsp=$'\u00a0'
+    local -a parts=()
+    _TAGS_MARKUP=""
+    [[ -n "$tags" ]] || return 0
+    IFS='/' read -r -a parts <<<"$tags"
+    for tag in "${parts[@]}"; do
+        [[ -n "$tag" ]] || continue
+        # 纯 bash 取模 (printf -v 为内置, 不 fork); 逐字符混合, 非 ASCII 取不到序数时按 1
+        h=0
+        for ((i = 0; i < ${#tag}; i++)); do
+            printf -v code '%d' "'${tag:i:1}" 2>/dev/null || code=1
+            h=$(((h * 31 + code) % 4096))
+        done
+        _markup_escape "$tag"
+        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG'>$nbsp$_MARKUP$nbsp</span> "
+    done
+    _TAGS_MARKUP=${out% }
+}
+
 # curl 下载到文件并校验 MIME 为 image/* (失败返回 1)
 _dl_icon() { # $1=url $2=输出文件
     curl -fsSL \
@@ -243,13 +271,31 @@ _ensure_ids() {
     done
 }
 
+# 一次性迁移旧数据: name 末尾 "(tags)" 拆到 tags 数组 (半/全角括号、可混用、可无空格),
+# 名字无括号 → tags=[]; 已有 tags 键的条目原样不动 (幂等, 二次调用零写入)
+_ensure_tags() {
+    jq -e 'any(.links[]?; has("tags") | not)' "$CONFIG" >/dev/null 2>&1 || return 0
+    _write_json '
+        .links |= map(
+            if has("tags") then .
+            else
+                (.name | (capture("^(?<base>.+?)\\s*[（(](?<t>[^）)]*)[）)]\\s*$") // null)) as $m
+                | if $m != null and ($m.t | length) > 0 then
+                    .name = ($m.base | gsub("^\\s+|\\s+$"; ""))
+                    | .tags = ($m.t | split("/") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))
+                  else .tags = [] end
+            end
+        )'
+}
+
 _load() {
     _links=()
-    while IFS=$'\t' read -r name id url; do
+    while IFS=$'\t' read -r name id url tags; do
         _host_from_url "$url"
-        # 四元组用 \x1f 分隔: name/url 可能含 | (表单不禁止), | 拼接会导致字段错位
-        _links+=("$name"$'\x1f'"$id"$'\x1f'"$url"$'\x1f'"$_HOST")
-    done < <(jq -r '.links[] | "\(.name)\t\(.id)\t\(.url)"' "$CONFIG")
+        # 五元组用 \x1f 分隔: name/url 可能含 | (表单不禁止), | 拼接会导致字段错位;
+        # tags 存 "/" 拼接串仅供显示, 展示前由 _tags_markup 切分
+        _links+=("$name"$'\x1f'"$id"$'\x1f'"$url"$'\x1f'"$_HOST"$'\x1f'"$tags")
+    done < <(jq -r '.links[] | "\(.name)\t\(.id)\t\(.url)\t\((.tags // []) | join("/"))"' "$CONFIG")
 }
 
 # 未缓存 host 入 pending (去重 + 跳过已 png/.fail); 依赖 _ensure_icons 内局部 seen/pending (bash 动态作用域)
@@ -269,7 +315,7 @@ _ensure_icons() {
     local -A seen=()
     local -a pending=()
     for entry in "${_links[@]}"; do
-        IFS=$'\x1f' read -r _ _ _ host <<<"$entry"
+        IFS=$'\x1f' read -r _ _ _ host _ <<<"$entry"
         _collect_host "$host"
     done
     while read -r surl; do
@@ -351,27 +397,32 @@ _list_footer() { # $1=data 标记
     printf '\0use-hot-keys\x1ftrue\n'
 }
 
-# _links 为 "name|id|url|host" 四元组, 缓存 hit 时附加图片属性
+# _links 为 "name|id|url|host|tags" 五元组, 缓存 hit 时附加图片属性
 # 主菜单: links + New 行 + 历史/书签浏览入口 + searcher @ 提示行
 # (历史/书签明细下沉子菜单, 避免污染普通查询过滤; searcher 不隔离, 沿旧行为保留 @ 提示)
 _list() {
     _ensure_ids
+    _ensure_tags
     _load
     # 主菜单不加载浏览器行: _browser_hosts 恒空, _ensure_icons 只预取 links/searcher
     _browser_hosts=()
     _ensure_icons
-    local entry name id url host
+    local entry name id url host tags disp
     for entry in "${_links[@]}"; do
-        IFS=$'\x1f' read -r name id url host <<<"$entry"
+        IFS=$'\x1f' read -r name id url host tags <<<"$entry"
         _markup_escape "$name"
+        disp=$_MARKUP
+        # tag 渲染为背景色块 (chip), 与 name 间留空格; 无 tag 时行文本保持原样
+        _tags_markup "$tags"
+        [[ -n "$_TAGS_MARKUP" ]] && disp+=" $_TAGS_MARKUP"
         # hit 判定内联 (避免 $() 命令替换 fork; fail/miss 输出相同, 无需三态)
         if [[ -f "$ICON_CACHE_DIR/$host.png" ]]; then
             # 多属性必须用 \x1f 连接 (仅行文本后一个 \0): rofi 按 C 字符串解析属性块,
             # 第二个 \0 会把 info 截断在字符串外 → ROFI_INFO 丢失, 选中无反应
-            printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$_MARKUP" "$ICON_CACHE_DIR/$host.png" "$id"
+            printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$disp" "$ICON_CACHE_DIR/$host.png" "$id"
         else
             # miss/fail fallback: 无图标纯文本行
-            printf '%s\0info\x1f%s\n' "$_MARKUP" "$id"
+            printf '%s\0info\x1f%s\n' "$disp" "$id"
         fi
     done
     printf '%s\0info\x1fnew\n' "$NEW_LINK"
@@ -478,17 +529,18 @@ _edit_link() {
     cur=$(jq -c --arg id "$id" '.links[] | select(.id == $id)' "$CONFIG" 2>/dev/null)
     [[ -n "$cur" ]] || return 0
 
-    local name url
+    local name url tags
     name=$(jq -r '.name' <<<"$cur")
     url=$(jq -r '.url' <<<"$cur")
-    _interact_async _edit_form "$id" "$name" "$url"
+    tags=$(jq -r '.tags // [] | join("/")' <<<"$cur")
+    _interact_async _edit_form "$id" "$name" "$url" "$tags"
 }
 
 _edit_form() { # 表单录入 + 按 id 替换写库 (rofi 退出后执行)
-    local id="$1" name="$2" url="$3"
-    _edit_loop "$name" "$url" "URL" "Edit Link" &&
-        _write_json --arg id "$id" --arg name "$_LINK_NAME" --arg url "$_LINK_URL" \
-            '(.links[] | select(.id == $id)) |= {id: .id, name: $name, url: $url}'
+    local id="$1" name="$2" url="$3" tags="$4"
+    _edit_loop "$name" "$url" "URL" "Edit Link" "$tags" &&
+        _write_json --arg id "$id" --arg name "$_LINK_NAME" --arg url "$_LINK_URL" --argjson tags "$_LINK_TAGS" \
+            '(.links[] | select(.id == $id)) |= {id: .id, name: $name, url: $url, tags: $tags}'
 }
 
 # Alt+2/Shift+Delete 删除: 按 id 定位, 确认后删除
@@ -618,9 +670,9 @@ _new_form() { # 剪贴板预填 + 表单 + 追加写库 (rofi 退出后执行)
     local url
     # clipboard_url 也在此执行: xclip/xsel/wl-paste 读取剪贴板可能阻塞, 不能留在 rofi grab 存活期间
     url=$(clipboard_url)
-    _edit_loop "" "$url" "URL" "New Link" &&
-        _write_json --arg id "$(_gen_id "$_LINK_NAME" "$_LINK_URL")" --arg name "$_LINK_NAME" --arg url "$_LINK_URL" \
-            '.links += [{name: $name, url: $url, id: $id}]'
+    _edit_loop "" "$url" "URL" "New Link" "" &&
+        _write_json --arg id "$(_gen_id "$_LINK_NAME" "$_LINK_URL")" --arg name "$_LINK_NAME" --arg url "$_LINK_URL" --argjson tags "$_LINK_TAGS" \
+            '.links += [{name: $name, url: $url, id: $id, tags: $tags}]'
 }
 
 # searcher 名白名单 (searcher 专属, links 不受影响): 字母+数字+-_
@@ -800,21 +852,25 @@ _handle_input() {
 # 弹表单录入链接, 校验失败 notify 并重开; 成功设置 _LINK_NAME/_LINK_URL, 取消返回 1
 # 第三参数 url_label 自定义 URL 字段标签 (searcher 表单提示 {key} 占位, 默认 "URL")
 # 第四参数 title 为对话框标题 (经 FORM_TITLE 传给 form_show, 默认 "Quicklinks")
+# 第五参数 tags 为已有 tag ("/" 拼接, 可空)
 _edit_loop() {
-    local name="$1" url="$2" url_label="${3:-URL}" title="${4:-Quicklinks}"
+    local name="$1" url="$2" url_label="${3:-URL}" title="${4:-Quicklinks}" tags="$5"
     while :; do
         local json=$(
             FORM_TITLE="$title" form_show <<EOF
 name|entry|Name|${name:-}|
 url|entry|${url_label}|${url:-}|
+tags|entry|Tags (/ 分隔, 可空)|${tags:-}|
 EOF
         )
         [[ -z "$json" ]] && return 1
 
         name=$(jq -r '.name' <<<"$json")
         url=$(jq -r '.url' <<<"$json")
+        tags=$(jq -r '.tags' <<<"$json")
         name=$(trim_str "$name")
         url=$(trim_str "$url")
+        tags=$(trim_str "$tags")
         if [[ -z "$name" ]]; then
             tool-notify critical "Quicklinks" "链接名称不能为空"
             continue
@@ -833,6 +889,7 @@ EOF
     done
     _LINK_NAME="$name"
     _LINK_URL="$url"
+    _LINK_TAGS=$(jq -cn --arg t "$tags" '$t | split("/") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
 }
 
 _main() {

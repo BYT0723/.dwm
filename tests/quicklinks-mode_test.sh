@@ -185,6 +185,7 @@ echo "OPEN:\$*" >> "$XDG_FAKE_LOG"
 EOF
 cat >"$FAKE_BIN/yad" <<EOF
 #!/usr/bin/env bash
+[[ -n "\$MOCK_YAD_LOG" ]] && printf '%s\n' "\$*" >> "\$MOCK_YAD_LOG"
 # 支持顺序输出序列 (MOCK_YAD_SEQ_FILE: 每行一次调用, 弹出第一行), 否则固定输出
 if [[ -n "\$MOCK_YAD_SEQ_FILE" && -s "\$MOCK_YAD_SEQ_FILE" ]]; then
 	first=\$(head -1 "\$MOCK_YAD_SEQ_FILE")
@@ -704,11 +705,74 @@ wait
 unset -f module_input
 assert_file_has "$XDG_FAKE_LOG" "OPEN:https://www.google.com/search?q=my%20kw" "searcher Enter: 弹输入框取词后搜"
 
-# 恢复 links-only fixture (_ensure_ids 零写入测试需要干净基准)
+# ---- Task 9: tags 字段 (迁移 + chip 显示 + 表单读写) ----
+# 迁移: 半/全角括号、混用、无空格、括号内含空格; 已有 tags 的条目不二次拆分
+wait
 cat >"$CONFIG" <<'JSON'
 {"links":[
-  {"name":"GitHub","url":"https://github.com","id":"id-1"},
-  {"name":"Example","url":"https://example.com","id":"id-2"}
+  {"name":"ChatGPT (ai/chat)","url":"https://chatgpt.com","id":"tag-1"},
+  {"name":"草榴(porn/forum/caoliu)","url":"https://cl.test","id":"tag-2"},
+  {"name":"橙果短剧（porn/duanju)","url":"https://cg.test","id":"tag-3"},
+  {"name":"Bing (CN)","url":"https://cn.bing.com","id":"tag-4"},
+  {"name":"PairDrop (file transfer LAN/WAN)","url":"https://p.test","id":"tag-5"},
+  {"name":"Plain","url":"https://plain.test","id":"tag-6"},
+  {"name":"Done","url":"https://done.test","id":"tag-7","tags":["keep"]},
+  {"name":"Esc (A&B/C<D>)","url":"https://esc.test","id":"tag-8"}
+]}
+JSON
+_list >"$TEST_DIR/tags-list.out"
+assert_eq "$(jq -r '.links[0].name' "$CONFIG")" "ChatGPT" "tags 迁移: 半角括号拆分"
+assert_eq "$(jq -c '.links[0].tags' "$CONFIG")" '["ai","chat"]' "tags 迁移: / 分隔 → 数组"
+assert_eq "$(jq -r '.links[1].name' "$CONFIG")" "草榴" "tags 迁移: 无空格括号"
+assert_eq "$(jq -c '.links[1].tags' "$CONFIG")" '["porn","forum","caoliu"]' "tags 迁移: 多级 tag"
+assert_eq "$(jq -r '.links[2].name' "$CONFIG")" "橙果短剧" "tags 迁移: 全角开括号 + 半角闭括号"
+assert_eq "$(jq -c '.links[2].tags' "$CONFIG")" '["porn","duanju"]' "tags 迁移: 混用括号 tag"
+assert_eq "$(jq -c '.links[3].tags' "$CONFIG")" '["CN"]' "tags 迁移: 括号内容作单 tag"
+assert_eq "$(jq -c '.links[4].tags' "$CONFIG")" '["file transfer LAN","WAN"]' "tags 迁移: tag 内空格保留 + trim"
+assert_eq "$(jq -c '.links[5].tags' "$CONFIG")" '[]' "tags 迁移: 无括号 → 空数组"
+assert_eq "$(jq -c '.links[6].tags' "$CONFIG")" '["keep"]' "tags 迁移: 已有 tags 不二次拆分"
+assert_eq "$(jq -r '.links[6].name' "$CONFIG")" "Done" "tags 迁移: 已有 tags 的 name 不变"
+nbsp=$'\u00a0'
+assert_file_has_lit "$TEST_DIR/tags-list.out" "ChatGPT <span background='#"
+assert_file_has_lit "$TEST_DIR/tags-list.out" ">${nbsp}ai${nbsp}</span>"
+assert_file_has_lit "$TEST_DIR/tags-list.out" ">${nbsp}A&amp;B${nbsp}</span>" "tags 显示: tag 内 & 转义"
+assert_file_has_lit "$TEST_DIR/tags-list.out" ">${nbsp}C&lt;D&gt;${nbsp}</span>" "tags 显示: tag 内 <> 转义"
+# 背景块数: 2+3+2+1+2+0+1+2 = 13
+assert_eq "$(grep -ao "background='#" "$TEST_DIR/tags-list.out" | wc -l)" "13" "tags 显示: 每 tag 一个背景块"
+# 幂等: tags 已全部补齐 → 二次 _list 零写入
+before=$(md5sum "$CONFIG" | cut -d' ' -f1)
+_list >/dev/null
+assert_eq "$(md5sum "$CONFIG" | cut -d' ' -f1)" "$before" "tags 迁移: 幂等 (二次 _list 不重写)"
+
+# 新增: Tags 表单字段 ("/" 分隔, trim/去空, 留空 → [])
+export MOCK_YAD_OUTPUT="Tagged|https://tagged.example|ai / chat "
+ROFI_RETV=1 ROFI_INFO=new _main
+wait
+unset MOCK_YAD_OUTPUT
+assert_eq "$(jq -c '.links[-1].tags' "$CONFIG")" '["ai","chat"]' "新增: tags 拆分/trim 后写入"
+export MOCK_YAD_OUTPUT="No Tag|https://notag.example|"
+ROFI_RETV=1 ROFI_INFO=new _main
+wait
+unset MOCK_YAD_OUTPUT
+assert_eq "$(jq -c '.links[-1].tags' "$CONFIG")" '[]' "新增: Tags 留空 → 空数组"
+
+# 编辑: 预填现有 tags, 保存覆盖
+: >"$TEST_DIR/yad-args.log"
+export MOCK_YAD_LOG="$TEST_DIR/yad-args.log"
+export MOCK_YAD_OUTPUT="ChatGPT|https://chatgpt.com|new/ai"
+ROFI_RETV=10 ROFI_INFO=tag-1 _main
+wait
+unset MOCK_YAD_LOG MOCK_YAD_OUTPUT
+assert_file_has_lit "$TEST_DIR/yad-args.log" "ai/chat" "编辑: 表单预填现有 tags"
+assert_eq "$(jq -c '.links[] | select(.id=="tag-1") | .tags' "$CONFIG")" '["new","ai"]' "编辑: tags 覆盖写入"
+assert_eq "$(jq -r '.links[] | select(.id=="tag-1") | .name' "$CONFIG")" "ChatGPT" "编辑: tags 改动不影响 name"
+assert_eq "$(jq -r '.links[] | select(.id=="tag-1") | .id' "$CONFIG")" "tag-1" "编辑: tags 改动保留 id"
+
+# recovery fixture: 已含 tags 的规范化数据 (零写入基准)
+cat >"$CONFIG" <<'JSON'
+{"links":[
+  {"name":"GitHub","url":"https://github.com","id":"id-1","tags":[]},
+  {"name":"Example","url":"https://example.com","id":"id-2","tags":[]}
 ]}
 JSON
 

@@ -170,7 +170,7 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | 函数               | 调用者                                                                 |
 | ------------------ | ---------------------------------------------------------------------- |
 | `_main()`          | 主入口 (按 ROFI_RETV 分派: 0=主菜单, 1=选中/下钻/返回, 2=自定义输入, 3/11=删除 (searcher\|* → _delete_searcher), 10=编辑 (searcher\|* → _edit_searcher)) |
-| `_list()`          | _main (RETV=0 主菜单; _ensure_ids + _load + _ensure_icons (browser_hosts 恒空, 只预取 links/searcher) 后输出 links 行 (hit `name\0icon\x1f<png>\x1finfo\x1f<id>`, miss/fail 纯文本 `name\0info\x1f<id>`) + New/New Searcher 行 + `^ History`/`* Bookmarks` 浏览入口行 + searcher `@key (name)` 可选中行 (`@key (name)\0icon\x1f<png>\x1finfo\x1fsearcher\|<key>`, 无 icon 时 `@key (name)\0info\x1fsearcher\|<key>`; `(name)` 包 `<span weight='light' size='small'><i>` 弱化 (同 launcher drun-display-format 的 span 部分, 不加方括号); 缺 key 老数据回退 key=name) + `_list_footer main`; link name 经 `_markup_escape` 转义 (footer 开了 markup-rows); 主菜单无 ^/* 明细行, 避免污染普通查询过滤; hit 判定内联 `[[ -f ]]` 避免 `$()` fork) |
+| `_list()`          | _main (RETV=0 主菜单; _ensure_ids + _ensure_tags + _load + _ensure_icons (browser_hosts 恒空, 只预取 links/searcher) 后输出 links 行 (hit `name tags\0icon\x1f<png>\x1finfo\x1f<id>`, miss/fail 纯文本 `name tags\0info\x1f<id>`; tags 为 `_tags_markup` 生成的背景色块, 无 tag 时省略) + New/New Searcher 行 + `^ History`/`* Bookmarks` 浏览入口行 + searcher `@key (name)` 可选中行 (`@key (name)\0icon\x1f<png>\x1finfo\x1fsearcher\|<key>`, 无 icon 时 `@key (name)\0info\x1fsearcher\|<key>`; `(name)` 包 `<span weight='light' size='small'><i>` 弱化 (同 launcher drun-display-format 的 span 部分, 不加方括号); 缺 key 老数据回退 key=name) + `_list_footer main`; link name 与 tag 经 `_markup_escape` 转义 (footer 开了 markup-rows); 主菜单无 ^/* 明细行, 避免污染普通查询过滤; hit 判定内联 `[[ -f ]]` 避免 `$()` fork) |
 | `_list_hist()` / `_list_bm()` | _dispatch (RETV=1 info=browse-hist/bm; back 首行 + `_load_browser_rows` 历史/书签 `title — host\0info\x1fhist\|<url>` / `title — host\0info\x1fbm\|<url>` 行 (子菜单不带 ^/* 前缀) + `_list_footer hist|bm`; 有输出 → rofi 原地刷新不退出; 测试缝 `QUICKLINKS_NO_BROWSER` 非空时跳过浏览器行 (主菜单精确断言保持 hermetic)) |
 | `_list_footer()`   | _list/_list_hist/_list_bm (输出 `\0data\x1f<main\|hist\|bm>` (经 ROFI_DATA 回传供 _handle_input 判上下文) + `\0markup-rows\x1ftrue` (行文本按 Pango markup 解析, 行内用户数据须先 `_markup_escape`) + `\0use-hot-keys\x1ftrue`) |
 | `_collect_host()`  | _ensure_icons (去重 + 跳过已 png/.fail, 未缓存 host 追加进 pending; 依赖调用者局部 seen/pending, bash 动态作用域) |
@@ -192,8 +192,8 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `_searcher_url_by_key()` | _select_searcher, _select_searcher_form, _handle_input (key 优先+name 回退, 忽略大小写; 未命中输出空) |
 | `_interact_async()`| _edit_link, _delete_link, _new_link, _new_searcher, _edit_searcher, _delete_searcher, _select_searcher (后台子 shell 等 rofi 退出释放 grab 后执行命令 — script mode 下 rofi 存活期间 grab 键盘, 须先让 rofi 退出) |
 | `_write_json()`    | _ensure_ids, _edit_form, _delete_form, _new_form, _new_searcher_form (jq 表达式原子写回 CONFIG: 唯一 tmp + mv, 避免并发写 .tmp 冲突) |
-| `_edit_link()`     | _main (RETV=10; `hist\|*`/`bm\|*`/browse-*/back/searcher\|* 只读/导航/searcher no-op (searcher 走 _edit_searcher); 否则按 id 预填数据 → _interact_async _edit_form) |
-| `_edit_form()`     | _interact_async (表单录入 + 按 id 替换写库, 保留 id)                   |
+| `_edit_link()`     | _main (RETV=10; `hist\|*`/`bm\|*`/browse-*/back/searcher\|* 只读/导航/searcher no-op (searcher 走 _edit_searcher); 否则按 id 预填 name/url/tags (`/` 拼接) → _interact_async _edit_form) |
+| `_edit_form()`     | _interact_async (表单录入 + 按 id 替换写库, 保留 id; tags 为 `_LINK_TAGS` JSON 数组) |
 | `_delete_link()`   | _main (RETV=3/11; `hist\|*`/`bm\|*`/browse-*/back/searcher\|* 只读/导航/searcher no-op (searcher 走 _delete_searcher); 否则按 id 取名字 → _interact_async _delete_form) |
 | `_delete_form()`   | _interact_async (module_confirm 确认后 jq 删除 + notify)               |
 | `_edit_searcher()` | _main (RETV=10 searcher\|* 分支; 按 key 忽略大小写定位 (含 name 回退) → _interact_async _edit_searcher_form) |
@@ -205,14 +205,16 @@ utils/shell-lib.sh — echo_note / is_float_term / init_tmux_cursor 无人调用
 | `_select_searcher_form()` | _interact_async (module_input 取词, 取消/空词 no-op, 否则用该引擎搜索) |
 | `_searcher_name_valid()` | _new_searcher_form, _edit_searcher_form (key 白名单 `^[A-Za-z0-9_-]+$`, searcher 专属; 判 key 用) |
 | `_new_link()`      | _dispatch (info=new; → _interact_async _new_form)                      |
-| `_new_form()`      | _interact_async (剪贴板 URL 预填 + 表单校验 + jq 追加; clipboard_url 须在此执行 — xclip 可能阻塞, 不能留在 rofi grab 存活期间) |
+| `_new_form()`      | _interact_async (剪贴板 URL 预填 + 表单校验 + jq 追加 `{name,url,id,tags}`; clipboard_url 须在此执行 — xclip 可能阻塞, 不能留在 rofi grab 存活期间) |
 | `_new_searcher()`  | _dispatch (info=new-searcher; → _interact_async _new_searcher_form)    |
 | `_new_searcher_form()` | _interact_async (三字段录入 + 白名单 + jq 追加 `{key,name,url}`; key 非法/撞名或 name 空/撞名 (各自忽略大小写) → critical notify 拒绝, 不写入) |
-| `_edit_loop()`     | _edit_form, _new_form (links 两字段表单录入 + 校验循环; 第三参 url_label 自定义 URL 字段标签; searcher 走专属 `_edit_searcher_loop`) |
+| `_edit_loop()`     | _edit_form, _new_form (links 三字段表单: Name/URL/Tags; Tags 为 `/` 分隔可空串, 保存前 trim/切分/去空 → `_LINK_TAGS`; 第三参 url_label 自定义 URL 字段标签; 第五参 tags 预填; searcher 走专属 `_edit_searcher_loop`) |
 | `clipboard_url()`  | _new_form (剪贴板严格 URL 校验, 无效静默返回非 0)                      |
 | `_gen_id()`        | _ensure_ids, _new_form (uuid 优先, base64 fallback)                    |
 | `_ensure_ids()`    | _list (全部有 id 时零写入早退, 仅缺 id 时全量重生成)                    |
-| `_load()`          | _list/_list_hist/_list_bm (构建 `_links` 四元组数组 `name|id|url|host`, host 一次性提取复用, 避免每次 fork python3) |
+| `_ensure_tags()`   | _list (旧数据一次性迁移: name 末尾 `(tags)` 拆到 `tags` 数组, 半/全角括号可混用、括号前空格可选; 无括号 → `[]`; 已有 `tags` 键不动 → 幂等零写入) |
+| `_tags_markup()`   | _list (把 `/` 拼接的 tag 串渲染为 Pango 背景色块 `<span background>` chip, 结果写 `$_TAGS_MARKUP`; 按 tag 内容 hash 取 `_TAG_BG` 调色板 (同名 tag 同色), NBSP 撑内边距; 逐字符 hash 用 `printf -v` 内置零 fork) |
+| `_load()`          | _list/_list_hist/_list_bm (构建 `_links` 五元组数组 `name|id|url|host|tags`, tags 为 `/` 拼接串仅供显示; host 一次性提取复用, 避免每次 fork python3) |
 | `_host_from_url()` | _load (纯 bash 参数展开提取 hostname, 零子进程; 结果写 `$_HOST` 全局变量而非 stdout — 避免 `$()` 命令替换 fork, _load 循环每行一次约省 40ms/64 条) |
 | `_markup_escape()` | _list (link name / searcher key+name), _print_browser_rows (标题) — 转义 `&`→`&amp;`、`<`→`&lt;`、`>`→`&gt;` 写 `$_MARKUP` 全局变量 (零子进程; bash 替换串里的 `&` 是"匹配文本"占位, 字面 & 须写 `\&`); footer 开启 `markup-rows` 后不转义会让 pango 解析失败 → 该行被过滤逻辑整行丢弃 |
 | `_fetch_favicon()` | _ensure_icons (① 页面 HTML 解析 link rel=icon 真实 favicon (优先标准 rel=icon 排除 apple-touch 白底大图), 相对路径拼接 host → ② 降级链 DuckDuckGo→Google s2→站内 /favicon.ico; curl 带浏览器 UA 防 429 限流 + 超时 + file MIME 校验 image/* + tmp/mv 原子写; 全失败写 .fail 标记) |
@@ -765,7 +767,7 @@ wallpaper.sh → source utils/monitor.sh, utils/notify.sh
 - `rofi/` 下各 type 目录的 `*.rasi` 文件
 - `rofi/fonts/` 字体文件
 - `rofi/colors/` `rofi/images/`
-- `~/.config/dwm/quicklinks.json` — quicklinks 书签, `links` 数组元素含 `id`(uuid)、`name`、`url` (icon 字段已废弃移除); 顶层 `searcher` 数组存搜索引擎 `{name, url}`(name 为唯一键, url 用 `{key}` 占位搜索词, 可省略 → 追加 url 末尾), 自定义输入搜索默认用 `searcher[0]`, 支持 `@<name>` 首 token 指定引擎
+- `~/.config/dwm/quicklinks.json` — quicklinks 书签, `links` 数组元素含 `id`(uuid)、`name`、`url`、`tags`(字符串数组, 可空; 旧数据 name 末尾 `(tag1/tag2)` 在首次 `_list` 时自动拆出并原子写回, 已带 `tags` 的条目不二次拆分), 表单 Tags 字段以 `/` 分隔录入 (icon 字段已废弃移除); 列表行把 tags 渲染为背景色块 chip; 顶层 `searcher` 数组存搜索引擎 `{name, url}`(name 为唯一键, url 用 `{key}` 占位搜索词, 可省略 → 追加 url 末尾), 自定义输入搜索默认用 `searcher[0]`, 支持 `@<name>` 首 token 指定引擎
 - `~/.config/dwm/wallpaper.json` — 壁纸配置, 含 `monitors`(按屏/组名键)、`groups`(成员名单 + enabled 启停) + 可选顶层/`.defaults.random_depth` (全局搜索深度, 缺省 3, `find -maxdepth`); 每个 monitor/组可带可选 `video-render` 对象 `{volume, fps}`: `volume>0` 传 `--volume N` 播放音频, `volume=0`/缺省时传 `--mute` 静音 (0 与 mute 等价), `fps>0` 传 `--fps`; 随机类型 `random_type` ∈ image/video/web (rofi Type 三选一); web 随机池 `random_web_dir`/`random_web_dir_dark` (缺省 `~/.local/share/Steam/steamapps/workshop/content/431960`，池为其下所有 `index.html` 的上层目录); 主题色调目录: light 用 `random_image_dir`/`random_video_dir`, dark 用 `random_image_dir_dark`/`random_video_dir_dark` (缺失/空串 fallback light, rofi Wallpaper 菜单 Images Dark/Videos Dark 配置); 目录路径可写 `~`/`$HOME` 可移植形式 (读侧 `expand_path` 展开, rofi 选择存盘经 `shrink_path` 自动压缩 `$HOME` 为 `~`)
 - `~/.local/state/dwm/wallpaper-last.json` — 壁纸主题记忆 (状态, 非配置): `{"<target>":{"light":"/path","dark":"/path"}}`, target = monitor 名/组名/Screen; 主题切换优先恢复记忆 (文件不存在回退 random), 手动 `next/select` 与 daemon 轮换按 `current-theme` 回写
 - `~/.config/dwm/vpsbandwidth.json` — 状态栏 VPS 流量额度配置 (0600, 不入库): `provider`(缺省 `dedione`, 对应 `vpsbandwidth_fetch_<provider>`)、`interval`(刷新秒数, 缺省 1800)、各厂商私有对象 (如 `dedione.{product_id,svs,auth_token}`); `auth_token` 为空时自动读 Firefox `cookies.sqlite` 的 `WHMCSlogin_auth_tk`, 令牌过期只需浏览器重新登录一次
