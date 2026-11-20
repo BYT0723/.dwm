@@ -50,16 +50,14 @@ _markup_escape() {
     _MARKUP=${_MARKUP//>/\&gt;}
 }
 
-# ---- tag chip ----
-# 深色底块 (Pango <span background>, rofi 会绘制) + 浅前景: 明暗主题下都清晰;
-# 颜色按 tag 内容取模, 同名 tag 跨链接颜色一致
-_TAG_BG=("#4c566a" "#5e81ac" "#7a5b7d" "#6f7a52")
-_TAG_FG="#eceff4"
+# ---- tag 着色 ----
+# Pango 无盒模型 (背景块尺寸只能跟随字号, 不能独立调 padding/圆角), 故用前景色 + "#" 前缀;
+# 中调配色在明暗主题下都可读; 颜色按 tag 内容取模, 同名 tag 跨链接颜色一致
+_TAG_COLORS=("#5e81ac" "#8f6f9e" "#6f8a5f" "#a37a4e")
 
-# 把 "/" 分隔的 tag 串渲染成 chip 串, 结果写 $_TAGS_MARKUP (空串表示无 tag)
-# 前景/背景由本函数生成, tag 文本仍须 markup 转义; thin space 撑出窄内边距
+# 把 "/" 分隔的 tag 串渲染成带色 "#tag" 串, 结果写 $_TAGS_MARKUP (空串表示无 tag)
 _tags_markup() {
-    local tags="$1" tag i code h out="" pad=$'\u2009'
+    local tags="$1" tag i code h out=""
     local -a parts=()
     _TAGS_MARKUP=""
     [[ -n "$tags" ]] || return 0
@@ -73,7 +71,7 @@ _tags_markup() {
             h=$(((h * 31 + code) % 4096))
         done
         _markup_escape "$tag"
-        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG' size='x-small'>$pad$_MARKUP$pad</span> "
+        out+="<span foreground='${_TAG_COLORS[h % ${#_TAG_COLORS[@]}]}' size='small'>#$_MARKUP</span> "
     done
     _TAGS_MARKUP=${out% }
 }

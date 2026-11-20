@@ -732,13 +732,12 @@ assert_eq "$(jq -c '.links[4].tags' "$CONFIG")" '["file transfer LAN","WAN"]' "t
 assert_eq "$(jq -c '.links[5].tags' "$CONFIG")" '[]' "tags 迁移: 无括号 → 空数组"
 assert_eq "$(jq -c '.links[6].tags' "$CONFIG")" '["keep"]' "tags 迁移: 已有 tags 不二次拆分"
 assert_eq "$(jq -r '.links[6].name' "$CONFIG")" "Done" "tags 迁移: 已有 tags 的 name 不变"
-pad=$'\u2009'
-assert_file_has_lit "$TEST_DIR/tags-list.out" "ChatGPT <span background='#"
-assert_file_has_lit "$TEST_DIR/tags-list.out" ">${pad}ai${pad}</span>"
-assert_file_has_lit "$TEST_DIR/tags-list.out" ">${pad}A&amp;B${pad}</span>" "tags 显示: tag 内 & 转义"
-assert_file_has_lit "$TEST_DIR/tags-list.out" ">${pad}C&lt;D&gt;${pad}</span>" "tags 显示: tag 内 <> 转义"
-# 背景块数: 2+3+2+1+2+0+1+2 = 13
-assert_eq "$(grep -ao "background='#" "$TEST_DIR/tags-list.out" | wc -l)" "13" "tags 显示: 每 tag 一个背景块"
+assert_file_has_lit "$TEST_DIR/tags-list.out" "ChatGPT <span foreground='#"
+assert_file_has_lit "$TEST_DIR/tags-list.out" "size='small'>#ai</span>" "tags 显示: #tag 着色 (小字号)"
+assert_file_has_lit "$TEST_DIR/tags-list.out" "size='small'>#A&amp;B</span>" "tags 显示: tag 内 & 转义"
+assert_file_has_lit "$TEST_DIR/tags-list.out" "size='small'>#C&lt;D&gt;</span>" "tags 显示: tag 内 <> 转义"
+# 着色块数: 2+3+2+1+2+0+1+2 = 13
+assert_eq "$(grep -ao "size='small'>#" "$TEST_DIR/tags-list.out" | wc -l)" "13" "tags 显示: 每 tag 一个着色段"
 # 幂等: tags 已全部补齐 → 二次 _list 零写入
 before=$(md5sum "$CONFIG" | cut -d' ' -f1)
 _list >/dev/null
