@@ -57,9 +57,9 @@ _TAG_BG=("#4c566a" "#5e81ac" "#7a5b7d" "#6f7a52")
 _TAG_FG="#eceff4"
 
 # 把 "/" 分隔的 tag 串渲染成 chip 串, 结果写 $_TAGS_MARKUP (空串表示无 tag)
-# 前景/背景由本函数生成, tag 文本仍须 markup 转义; NBSP 撑出块内边距
+# 前景/背景由本函数生成, tag 文本仍须 markup 转义; thin space 撑出窄内边距
 _tags_markup() {
-    local tags="$1" tag i code h out="" nbsp=$'\u00a0'
+    local tags="$1" tag i code h out="" pad=$'\u2009'
     local -a parts=()
     _TAGS_MARKUP=""
     [[ -n "$tags" ]] || return 0
@@ -73,7 +73,7 @@ _tags_markup() {
             h=$(((h * 31 + code) % 4096))
         done
         _markup_escape "$tag"
-        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG' size='small'>$nbsp$_MARKUP$nbsp</span> "
+        out+="<span background='${_TAG_BG[h % ${#_TAG_BG[@]}]}' foreground='$_TAG_FG' size='x-small'>$pad$_MARKUP$pad</span> "
     done
     _TAGS_MARKUP=${out% }
 }
