@@ -2,8 +2,8 @@
 
 # 1-2
 # 3-5
-dir="$HOME/.dwm/rofi/launchers/type-1"
-theme='style-2'
+dir="$HOME/.dwm/rofi/launchers/type-2"
+theme='style-1'
 quicklinks="$HOME/.dwm/rofi/scripts/quicklinks-mode.sh"
 
 ## Run
@@ -27,6 +27,7 @@ rofi \
         hint-result: "Result: ";
 		hint-welcome: "calculate something...";
     }}' \
+    -theme-str '* {font: "JetBrainsMono Nerd Font 12"; }' \
     -theme-str 'element-text {font: "Noto Sans CJK SC 14"; }' \
     -theme-str 'configuration {terminal: "'${TERMINAL:-kitty}'";}' \
     -show combi \
