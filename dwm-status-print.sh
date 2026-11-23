@@ -246,8 +246,9 @@ print_mpd() {
 }
 
 human_speed() {
-    local bytes=$1
+    local bytes=${1:-0}
 
+    [[ $bytes =~ ^[0-9]+$ ]] || bytes=0
     if ((bytes < 1024)); then
         printf "%5dB/s" "$bytes"
     elif ((bytes < 1048576)); then
@@ -262,7 +263,13 @@ human_speed() {
 # Network traffic
 print_speed() {
     # interface_name / interface_type / interface_ipv4 / ifrxspeed / iftxspeed
+    local iface iftype ipv4 rx tx
+
+    # 启动时 daemon 可能还没写缓存; 缺文件直接返回, 半行/脏值按 0 处理
+    [ -r "$network_traffic_path" ] || return
     read iface iftype ipv4 rx tx <"$network_traffic_path"
+    [[ $rx =~ ^[0-9]+$ ]] || rx=0
+    [[ $tx =~ ^[0-9]+$ ]] || tx=0
 
     local tx_fg="$white" rx_fg="$white"
     ((tx >= 2097152)) && tx_fg="$yellow" # 2MiB/s 上行
@@ -278,8 +285,14 @@ print_speed() {
 }
 
 print_mail() {
+    local unread
+
+    # 开机/daemon 重启时缓存可能还没落盘: 缺文件或脏值都静默返回, 不要把
+    # read 错误和 (( )) 语法错误刷进 refresh 日志
+    [ -r "$mail_unread_path" ] || return
     read unread <"$mail_unread_path"
-    (($unread > 0)) && printf "^c$yellow^${icons[mail]}"
+    [[ $unread =~ ^[0-9]+$ ]] || return
+    ((unread > 0)) && printf "^c$yellow^${icons[mail]}"
 }
 
 print_rss() {
