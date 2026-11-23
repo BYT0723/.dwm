@@ -684,7 +684,8 @@ dwm-statuscmd.sh (状态栏点击)
 ```
 dwm-launcher.sh (快捷键)
   → source utils/monitor.sh (is_portrait 判断方向)
-  → rofi -show drun          (应用启动)
+  → rofi/scripts/launcher [<type>-<style>]  (应用启动; 如 1-2 → launchers/type-1/style-2.rasi,
+    缺失/格式非法/样式文件不存在时静默回退 type-2/style-1)
   → rofi/scripts/powermenu_t2 (竖屏) / powermenu_t4 (横屏)  (电源菜单)
   → rofi/scripts/mpd.sh      (音乐控制)
   → rofi/scripts/module.sh   (模块管理)

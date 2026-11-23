@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 
-# 1-2
-# 3-5
-dir="$HOME/.dwm/rofi/launchers/type-2"
+# $1 = <type>-<style>，如 1-2 → launchers/type-1/style-2.rasi
+# 缺失/非法/样式文件不存在时静默回退默认 type-2/style-1
+dir="$HOME/.dwm/rofi/launchers/type-1"
 theme='style-1'
+if [[ "$1" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    cand_dir="$HOME/.dwm/rofi/launchers/type-${BASH_REMATCH[1]}"
+    cand_theme="style-${BASH_REMATCH[2]}"
+    if [[ -f "$cand_dir/${cand_theme}.rasi" ]]; then
+        dir="$cand_dir"
+        theme="$cand_theme"
+    fi
+fi
 quicklinks="$HOME/.dwm/rofi/scripts/quicklinks-mode.sh"
 
 ## Run

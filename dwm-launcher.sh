@@ -26,7 +26,7 @@ term() {
     esac
 }
 
-apps() { /bin/bash "$WORK_DIR"/rofi/scripts/launcher "$@"; }
+apps() { /bin/bash "$WORK_DIR"/rofi/scripts/launcher 2-1 "$@"; }
 mpd() { /bin/bash "$WORK_DIR"/rofi/scripts/mpd.sh "$@"; }
 modules() { /bin/bash "$WORK_DIR"/rofi/scripts/module.sh "$@"; }
 screenshot() { [ -z "$1" ] && /bin/bash "$WORK_DIR"/rofi/scripts/screenshot.sh || /bin/bash "$WORK_DIR/tools/screenshot.sh" "$@"; }

@@ -28,7 +28,7 @@
 | 命令 | 说明 |
 | ---- | ---- |
 | `bash autostart.sh` | DWM 启动入口（合成器/通知/XSETTINGS/壁纸/状态栏/DPMS/主题 daemon） |
-| `bash dwm-launcher.sh {apps\|powermenu\|modules\|...}` | 快捷键分发 → rofi 菜单（横/竖屏自动选 powermenu type） |
+| `bash dwm-launcher.sh {apps\|powermenu\|modules\|...}` | 快捷键分发 → rofi 菜单（横/竖屏自动选 powermenu type）；`apps [<type>-<style>]` 可指定启动器外观，如 `apps 1-2` |
 | `bash dwm-status.sh [reboot\|reboot-daemon\|reboot-refresh]` | 状态栏 daemon + 刷新循环（`xsetroot -name`） |
 | `bash dwm-statuscmd.sh` | 状态栏点击事件分发（音量/亮度/日历/mpd/...） |
 | `bash tools/theme.sh {apply light\|dark \| auto [on\|off] \| check}` | 主题切换；`auto` 为日出日落 daemon（60s 轮询，挂起/锁屏安全） |
@@ -172,6 +172,7 @@ DWM 启动 → autostart.sh ─┬─ picom / dunst / xsettingsd / snixembed / l
 | 脚本 | 功能 | 依赖 |
 | ---- | ---- | ---- |
 | `launcher_t1~t7` | 应用启动器 (combi 模式; t1/t3 挂载 quicklinks) | rofi / quicklinks-mode.sh |
+| `launcher` | 应用启动器 (combi + quicklinks/calc/emoji; 首参 `<type>-<style>` 指定外观, 缺失/非法回退 type-2/style-1) | rofi / quicklinks-mode.sh |
 | `powermenu_t1~t6` | 电源菜单 (关机/重启/锁屏/挂起/注销) | rofi / tools/lock.sh |
 | `module.sh` | 系统模块管理 (picom/网络/蓝牙/主题/壁纸/...) | rofi / nmcli / bluetoothctl / tools/* |
 | `lib-module.sh` | rofi 模块菜单框架 (parse/loop/confirm) | rofi / util.sh |
