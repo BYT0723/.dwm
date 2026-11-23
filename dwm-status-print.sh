@@ -329,7 +329,12 @@ print_docker() {
 }
 
 print_notification() {
-    unread=$(dunstctl count history)
+    local unread
+
+    # dunstctl 走 D-Bus; dunst 卡住时会一直等回复, 而 refresh 是串行循环,
+    # 一个慢 block 就冻结整条状态栏 (与 amixer 同一类问题). 限时并校验输出.
+    unread=$(timeout 1 dunstctl count history 2>/dev/null)
+    [[ $unread =~ ^[0-9]+$ ]] || return
     ((unread > 0)) && printf "^c$yellow^${icons[notification]}"
 }
 
